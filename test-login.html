@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>NymAI Token Grabber</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+  <h1>NymAI Test Login</h1>
+  <p>Follow the instructions in your browser's developer console (F12) to log in and get your token.</p>
+
+  <script>
+    // This wrapper waits for the page to be fully loaded
+    document.addEventListener("DOMContentLoaded", function() {
+      
+      // 2. Add your Supabase keys here
+      const SUPABASE_URL = "https://rpnprnyoylifxxstdxzg.supabase.co";
+      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwbnBybnlveWxpZnh4c3RkeHpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwMjkwMTgsImV4cCI6MjA3NzYwNTAxOH0.nk-uMk7TZQWhlrKzwJ2AOobIHeby2FzuGEP92oRxjQc";
+
+      // 3. Create the client
+      const { createClient } = supabase;
+      const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      // 4. THIS IS THE FIX: We make 'client' global
+      // so your F12 console can see it.
+      window.client = client;
+
+      // 5. Print instructions to the console
+      console.log("Supabase client loaded. Ready to log in.");
+      console.log("---");
+      console.log("INSTRUCTIONS:");
+      console.log("1. Go to Supabase > Auth and 'Manually confirm' your 'test@nymai.io' user.");
+      console.log("2. Copy and paste the *next* command into this console to log in.");
+      console.log("await client.auth.signInWithPassword({ email: 'test@nymai.io', password: 'password123' })");
+      console.log("---");
+
+    });
+  </script>
+</body>
+</html>
