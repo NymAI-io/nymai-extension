@@ -34,6 +34,44 @@ function IndexPopup() {
     setError("No scan result found. Right-click on a page to start a scan.")
   }
 
+  // --- NEW: Upgrade to Pro function ---
+  const handleUpgrade = async () => {
+    try {
+      // 1. Get the user's session from storage to get the auth token
+      const storageData = await chrome.storage.local.get("nymAiSession");
+      const session = storageData.nymAiSession;
+
+      if (!session || !session.access_token) {
+        setError("You must be logged in to upgrade.");
+        return;
+      }
+
+      // 2. Call our *new* backend endpoint to create a checkout session
+      const response = await fetch("http://127.0.0.1:8000/v1/create-checkout-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // Send the user's auth token
+          "Authorization": `Bearer ${session.access_token}`
+        }
+      });
+
+      const data = await response.json();
+
+      if (response.status !== 200) {
+        throw new Error(data.detail || "Failed to create checkout session.");
+      }
+
+      // 3. Open the real Stripe checkout URL in a new tab
+      if (data.url) {
+        chrome.tabs.create({ url: data.url });
+      }
+
+    } catch (e) {
+      setError(`Upgrade failed: ${e.message}`);
+    }
+  }
+
   // ---
   // REPAIRED useEffect HOOK FOR REAL-TIME VALIDATION
   // ---
@@ -126,7 +164,23 @@ function IndexPopup() {
       return <div className="text-center p-4">Loading result...</div>
     }
     if (error && !scanResult) {
-      // Only show general errors if there's no result to display
+      // --- NEW: Check for 402 Payment Required error ---
+      if (error.includes("402")) {
+        return (
+          <div className="mt-4 p-4 bg-yellow-900/50 border border-yellow-700 text-yellow-200 rounded-lg text-center">
+            <p className="font-semibold">
+              You're out of Video Scan credits.
+            </p>
+            <p className="text-sm mt-1 mb-3">Upgrade to Pro for more.</p>
+            <button
+              onClick={handleUpgrade}
+              className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors">
+              Upgrade to Pro
+            </button>
+          </div>
+        )
+      }
+      // --- Fallback to the generic error display ---
       return (
         <div className="mt-4 p-3 bg-red-800 text-red-200 rounded-lg text-sm">
           {error}

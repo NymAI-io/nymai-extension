@@ -1,48 +1,56 @@
-import cssText from "data-text:~style.css"
+// src/content.tsx
 import type { PlasmoCSConfig } from "plasmo"
-
-import { CountButton } from "~features/count-button"
-
 export const config: PlasmoCSConfig = {
-  matches: ["<all_urls>"]
+  matches: ["<all_urls>"],
+  all_frames: true
 }
 
-/**
- * Generates a style element with adjusted CSS to work correctly within a Shadow DOM.
- *
- * Tailwind CSS relies on `rem` units, which are based on the root font size (typically defined on the <html>
- * or <body> element). However, in a Shadow DOM (as used by Plasmo), there is no native root element, so the
- * rem values would reference the actual page's root font size—often leading to sizing inconsistencies.
- *
- * To address this, we:
- * 1. Replace the `:root` selector with `:host(plasmo-csui)` to properly scope the styles within the Shadow DOM.
- * 2. Convert all `rem` units to pixel values using a fixed base font size, ensuring consistent styling
- *    regardless of the host page's font size.
- */
-export const getStyle = (): HTMLStyleElement => {
-  const baseFontSize = 16
-
-  let updatedCssText = cssText.replaceAll(":root", ":host(plasmo-csui)")
-  const remRegex = /([\d.]+)rem/g
-  updatedCssText = updatedCssText.replace(remRegex, (match, remValue) => {
-    const pixelsValue = parseFloat(remValue) * baseFontSize
-
-    return `${pixelsValue}px`
-  })
-
-  const styleElement = document.createElement("style")
-
-  styleElement.textContent = updatedCssText
-
-  return styleElement
+// This is a Plasmo-specific feature to get the right-clicked element
+export const getRootContainer = (payload) => {
+  return document.getElementById(payload.targetElementId)
 }
 
-const PlasmoOverlay = () => {
-  return (
-    <div className="plasmo-z-50 plasmo-flex plasmo-fixed plasmo-top-32 plasmo-right-8">
-      <CountButton />
-    </div>
-  )
-}
+// Listen for the message from the background script
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  
+  console.log("CONTENT: Received message:", request); // <--- ADD THIS LINE
 
-export default PlasmoOverlay
+  if (request.action === "get-clicked-content") {
+    // 'getRootContainer' gives us the element the user clicked on
+    const targetElement = getRootContainer(request)
+    if (targetElement) {
+      // --- This is our new multimodal logic ---
+      if (targetElement.tagName === "IMG") {
+        // It's an image!
+        // TODO: We need a way to get the image data (base64)
+        // For now, we'll send the URL
+        sendResponse({
+          content_type: "image",
+          content_data: (targetElement as HTMLImageElement).src
+        })
+      } else if (targetElement.tagName === "VIDEO") {
+        // It's a video!
+        sendResponse({
+          content_type: "video",
+          content_data: (targetElement as HTMLVideoElement).src
+        })
+      } else {
+        // It's text!
+        sendResponse({
+          content_type: "text",
+          content_data: targetElement.innerText || window.getSelection().toString()
+        })
+      }
+      // ---
+    } else {
+      // Fallback: If no element was found, scan the whole page
+      sendResponse({
+        content_type: "text",
+        content_data: document.body.innerText
+      })
+    }
+  }
+  return true // Async
+})
+
+export default () => null
