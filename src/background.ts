@@ -9,65 +9,49 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 // 1. Create the right-click context menu when the extension is installed
 chrome.runtime.onInstalled.addListener(() => {
+  // Replace the old .create() call with these three:
   chrome.contextMenus.create({
-    id: "nym-ai-scan",
-    title: "Scan with NymAI",
-    contexts: ["page", "selection", "image", "video", "audio"]
+    id: "scanText",
+    title: "Scan selected text with NymAI",
+    contexts: ["selection"]
+  });
+
+  chrome.contextMenus.create({
+    id: "scanImage",
+    title: "Scan image with NymAI",
+    contexts: ["image"]
+  });
+
+  chrome.contextMenus.create({
+    id: "scanVideo",
+    title: "Scan video with NymAI",
+    contexts: ["video"]
   })
 })
 
 // 2. Listen for a click on that context menu
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "nym-ai-scan") {
-    
-    // --- THIS IS THE NEW, CORRECT LOGIC ---
-
-    // Case 1: The user highlighted text
-    if (info.selectionText) {
-      console.log("BACKGROUND: Detected selected text.");
-      runFullScan({
-        content_type: "text",
-        content_data: info.selectionText
-      });
-      return; // Stop here
-    }
-
-    // Case 2: The user clicked an image
-    if (info.mediaType === "image" && info.srcUrl) {
-      console.log("BACKGROUND: Detected image click.");
-      runFullScan({
-        content_type: "image",
-        content_data: info.srcUrl
-      });
-      return; // Stop here
-    }
-
-    // Case 3: The user clicked a video
-    if (info.mediaType === "video" && info.srcUrl) {
+  if (info.menuItemId === "scanText" && info.selectionText) {
+    console.log("BACKGROUND: Detected selected text.");
+    runFullScan({
+      content_type: "text",
+      content_data: info.selectionText
+    });
+  } else if (info.menuItemId === "scanImage" && info.srcUrl) {
+    console.log("BACKGROUND: Detected image click.");
+    runFullScan({
+      content_type: "image",
+      content_data: info.srcUrl
+    });
+  } else if (info.menuItemId === "scanVideo" && info.srcUrl) {
       console.log("BACKGROUND: Detected video click.");
       runFullScan({
         content_type: "video",
         content_data: info.srcUrl
       });
-      return; // Stop here
-    }
-    
-    // Case 4: The user clicked audio
-    if (info.mediaType === "audio" && info.srcUrl) {
-      console.log("BACKGROUND: Detected audio click.");
-      runFullScan({
-        content_type: "audio",
-        content_data: info.srcUrl
-      });
-      return; // Stop here
-    }
-
-    // Fallback: If we don't know what was clicked, save an error.
-    console.error("NymAI Error: No scannable content found.");
-    chrome.storage.local.set({ 
-      lastScanResult: { error: "No text, image, or video was selected." } 
-    });
   }
+  // Note: We no longer need the other cases (audio, link) for the MVP,
+  // and we have intentionally removed the fallback error case.
 });
 
 // 5. This is the scanning logic (moved from popup.tsx)
@@ -97,6 +81,18 @@ async function runFullScan(contentToScan: { content_type: string; content_data: 
     })
 
     const data = await response.json()
+    
+    // --- THIS IS THE NEW LOGIC ---
+    if (response.status === 402) {
+        // Specifically catch the 402 error
+        // We save *only* the error detail, not the generic "fetch failed"
+        chrome.storage.local.set({ 
+            lastScanResult: { error: data.detail, error_code: 402 } 
+        });
+        return; // Stop here
+    }
+    // --- END NEW LOGIC ---
+
     if (response.status !== 200) {
       throw new Error(data.detail || "Backend error")
     }
@@ -106,6 +102,6 @@ async function runFullScan(contentToScan: { content_type: string; content_data: 
   } catch (e) {
     console.error("NymAI Scan Failed:", e)
     // Save the error to storage so the popup can see it
-    chrome.storage.local.set({ lastScanResult: { error: e.message } })
+    chrome.storage.local.set({ lastScanResult: { error: e.message, error_code: 500 } })
   }
 }

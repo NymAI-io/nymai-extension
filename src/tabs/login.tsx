@@ -2,6 +2,8 @@
 import "../style.css"
 import React, { useState } from "react"
 import { createClient } from "@supabase/supabase-js"
+// Define the explicit providers we support
+type Provider = "google" | "github";
 
 // --- CONFIGURE YOUR KEYS (from your .env file) ---
 const SUPABASE_URL = "https://rpnprnyoylifxxstdxzg.supabase.co"

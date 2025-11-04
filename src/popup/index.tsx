@@ -1,5 +1,5 @@
-// src/popup.tsx
-import "style.css"
+// src/popup/index.tsx
+import "../style.css"
 import React, { useState, useEffect } from "react"
 import { createClient } from "@supabase/supabase-js"
 
@@ -14,133 +14,178 @@ function IndexPopup() {
   const [scanResult, setScanResult] = useState(null)
   const [loading, setLoading] = useState(true) // Start in loading state
   const [error, setError] = useState("")
+  const [currentUrl, setCurrentUrl] = useState<string | null>(null)
+  const [isYouTubeVideo, setIsYouTubeVideo] = useState(false)
+  const [errorCode, setErrorCode] = useState<number | null>(null)
 
   // This function opens our login.tsx tab
   const openLoginPage = () => {
-    // This command dynamically finds the correct URL for our login page
-    // and is the correct way to do this.
-    chrome.tabs.create({ url: chrome.runtime.getURL("tabs/login.html") });
+    chrome.tabs.create({ url: chrome.runtime.getURL("tabs/login.html") })
   }
 
-  // --- NEW: Sign out function ---
+  // --- Sign out function ---
   const signOut = async () => {
-    // 1. Sign out from Supabase
     await supabase.auth.signOut()
-    // 2. Clear the local storage
     await chrome.storage.local.remove("nymAiSession")
-    // 3. Update the UI state
     setUserEmail(null)
-    setScanResult(null) // Also clear scan results on logout
+    setScanResult(null)
     setError("No scan result found. Right-click on a page to start a scan.")
+    setErrorCode(null) // Clear error code
   }
 
-  // --- NEW: Upgrade to Pro function ---
+  // --- Upgrade to Pro function ---
   const handleUpgrade = async () => {
     try {
-      // 1. Get the user's session from storage to get the auth token
-      const storageData = await chrome.storage.local.get("nymAiSession");
-      const session = storageData.nymAiSession;
+      const storageData = await chrome.storage.local.get("nymAiSession")
+      const session = storageData.nymAiSession
 
       if (!session || !session.access_token) {
-        setError("You must be logged in to upgrade.");
-        return;
+        setError("You must be logged in to upgrade.")
+        return
       }
 
-      // 2. Call our *new* backend endpoint to create a checkout session
-      const response = await fetch("http://127.0.0.1:8000/v1/create-checkout-session", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // Send the user's auth token
-          "Authorization": `Bearer ${session.access_token}`
+      const response = await fetch(
+        "http://127.0.0.1:8000/v1/create-checkout-session",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`
+          }
         }
-      });
+      )
 
-      const data = await response.json();
+      const data = await response.json()
 
       if (response.status !== 200) {
-        throw new Error(data.detail || "Failed to create checkout session.");
+        throw new Error(data.detail || "Failed to create checkout session.")
       }
 
-      // 3. Open the real Stripe checkout URL in a new tab
       if (data.url) {
-        chrome.tabs.create({ url: data.url });
+        chrome.tabs.create({ url: data.url })
       }
-
     } catch (e) {
-      setError(`Upgrade failed: ${e.message}`);
+      setError(`Upgrade failed: ${e.message}`)
     }
   }
 
-  // ---
-  // REPAIRED useEffect HOOK FOR REAL-TIME VALIDATION
-  // ---
+  // --- New function to scan YouTube video from the popup ---
+  const handleScanYouTubeVideo = async () => {
+    if (!currentUrl) {
+      setError("Could not get the current tab's URL.")
+      return
+    }
+
+    setLoading(true)
+    setError("")
+    setScanResult(null)
+
+    try {
+      // This logic is similar to runFullScan in background.ts
+      const storageData = await chrome.storage.local.get("nymAiSession")
+      const session = storageData.nymAiSession
+      if (!session || !session.access_token) {
+        throw new Error("You must be logged in to scan.")
+      }
+
+      const response = await fetch("http://127.0.0.1:8000/v1/scan", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          content_type: "video",
+          content_data: currentUrl
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        // The storage listener will pick up the error, but we can throw here too
+        throw new Error(data.detail || `Request failed with status ${response.status}`)
+      }
+
+      // The storage listener will update the UI, but we can set it here for immediate feedback
+      setScanResult(data)
+    } catch (e) {
+      setError(`Scan failed: ${e.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // --- useEffect HOOK FOR REAL-TIME VALIDATION ---
   useEffect(() => {
-    // 1. Create an async function inside useEffect
     async function loadPopupData() {
       try {
-        // 1. Use getUser() to FORCE a server-side check.
-        // This will fail if the user was deleted in the dashboard.
         const {
           data: { user },
           error: userError
         } = await supabase.auth.getUser()
 
         if (userError || !user) {
-          // This is the new "logged out" state.
           setUserEmail(null)
-          await chrome.storage.local.remove("nymAiSession") // Clean up our stale session
+          await chrome.storage.local.remove("nymAiSession")
         } else {
-          // User is 100% valid. NOW we can get the session for our background script.
           const {
             data: { session }
           } = await supabase.auth.getSession()
 
           if (session) {
-            // User is logged in and session is valid
             setUserEmail(session.user.email)
-            await chrome.storage.local.set({ nymAiSession: session }) // Refresh local storage
+            await chrome.storage.local.set({ nymAiSession: session })
           } else {
-            // This should be impossible if getUser() succeeded, but it's a safe fallback.
             setUserEmail(null)
             await chrome.storage.local.remove("nymAiSession")
           }
         }
 
-        // 3. Load the last scan result (this part remains the same)
+        // Load the last scan result
         const resultData = await chrome.storage.local.get("lastScanResult")
         if (resultData.lastScanResult) {
           if (resultData.lastScanResult.error) {
             setError(`Last scan failed: ${resultData.lastScanResult.error}`)
+            setErrorCode(resultData.lastScanResult.error_code || null)
+            setScanResult(null) // <-- THIS IS THE FIX
           } else {
             setScanResult(resultData.lastScanResult)
           }
         } else {
-          setError(
-            "No scan result found. Right-click on a page to start a scan."
-          )
         }
+
+        // Get current tab URL
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs[0] && tabs[0].url) {
+            const url = tabs[0].url
+            setCurrentUrl(url)
+            if (url.includes("youtube.com/watch")) {
+              setIsYouTubeVideo(true)
+            }
+          }
+        })
       } catch (e) {
-        // --- THIS IS THE REPAIRED CATCH BLOCK ---
         console.error("Error loading popup data:", e)
         setError("Failed to load data. Please reload the extension.")
       } finally {
-        // 4. THIS IS KEY: Set loading to false *after* all async work is done
         setLoading(false)
       }
     }
-    // 5. Call the async function
     loadPopupData()
 
-    // 6. Set up the storage listener
+    // Set up the storage listener
     const storageListener = (changes: any) => {
       if (changes.lastScanResult) {
         const newData = changes.lastScanResult.newValue
         if (newData.error) {
           setError(`Last scan failed: ${newData.error}`)
+          setErrorCode(newData.error_code || null)
+          setScanResult(null) // <-- THIS IS THE FIX
         } else {
           setScanResult(newData)
-          setError(null) // Clear old errors
+          setError(null)
+          setErrorCode(null)
         }
       }
     }
@@ -148,7 +193,7 @@ function IndexPopup() {
 
     // Cleanup
     return () => chrome.storage.onChanged.removeListener(storageListener)
-  }, []) // The empty array still ensures this runs only once
+  }, []) // The empty array ensures this runs only once
 
   // ---
   // Helper functions to render the UI
@@ -160,85 +205,102 @@ function IndexPopup() {
   }
 
   const renderResult = () => {
+    // Priority 1: Loading state
     if (loading) {
-      return <div className="text-center p-4">Loading result...</div>
+      return <div className="text-center p-4">Loading...</div>;
     }
-    if (error && !scanResult) {
-      // --- NEW: Check for 402 Payment Required error ---
-      if (error.includes("402")) {
-        return (
-          <div className="mt-4 p-4 bg-yellow-900/50 border border-yellow-700 text-yellow-200 rounded-lg text-center">
-            <p className="font-semibold">
-              You're out of Video Scan credits.
-            </p>
-            <p className="text-sm mt-1 mb-3">Upgrade to Pro for more.</p>
-            <button
-              onClick={handleUpgrade}
-              className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors">
-              Upgrade to Pro
-            </button>
-          </div>
-        )
-      }
-      // --- Fallback to the generic error display ---
+
+    // Priority 2: Special UI for YouTube pages (if no result or error yet)
+    if (isYouTubeVideo && !scanResult && !error) {
+      return (
+        <div className="mt-4 p-4 bg-gray-700 rounded-lg text-center">
+          <button
+            onClick={handleScanYouTubeVideo}
+            className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors">
+            Scan this YouTube Video
+          </button>
+        </div>
+      );
+    }
+
+    // Priority 3: Handle specific, actionable errors (like needing to upgrade)
+    if (errorCode === 402) {
+      return (
+        <div className="mt-4 p-4 bg-yellow-900/50 border border-yellow-700 text-yellow-200 rounded-lg text-center">
+          <p className="font-semibold">{error}</p>
+          <p className="text-sm mt-1 mb-3">Upgrade to Pro for more scans.</p>
+          <button
+            onClick={handleUpgrade}
+            className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors">
+            Upgrade to Pro
+          </button>
+        </div>
+      );
+    }
+
+    // Priority 4: Handle any other generic error
+    if (error) {
       return (
         <div className="mt-4 p-3 bg-red-800 text-red-200 rounded-lg text-sm">
-          {error}
+          Last scan failed: {error}
         </div>
-      )
+      );
     }
-    if (!scanResult) return null
+    
+    // Priority 5: Display the successful scan result
+    if (scanResult) {
+      const authScore = scanResult?.authenticity?.score ?? 0;
+      const credRiskScore = scanResult?.credibility?.risk_score ?? 0;
 
-    const authScore = scanResult?.authenticity?.score ?? 0
-    const credRiskScore = scanResult?.credibility?.risk_score ?? 0
+      return (
+        <div className="mt-4 p-3 bg-gray-700 rounded-lg animate-fade-in">
+          <h3 className="text-lg font-bold text-white mb-2">NymAI Analysis</h3>
+          {/* Authenticity Section */}
+          <div className="mb-3">
+            <p className="text-gray-300">Authenticity (AI Detection):</p>
+            <div className="flex justify-between items-center">
+              <span className="text-2xl">{authScore}% AI</span>
+              {renderScore(authScore)}
+            </div>
+            <p className="text-sm text-gray-400 italic mt-1">
+              "{scanResult?.authenticity?.analysis || "No analysis provided."}"
+            </p>
+          </div>
+          {/* Credibility Section */}
+          <div className="border-t border-gray-600 pt-3">
+            <p className="text-gray-300">Credibility (Factual Truth):</p>
+            <div className="flex justify-between items-center">
+              <span className="text-2xl">{credRiskScore}% Risk</span>
+              {renderScore(credRiskScore)}
+            </div>
+            <p className="text-sm text-gray-400 italic mt-1">
+              "{scanResult?.credibility?.analysis || "No analysis provided."}"
+            </p>
+          </div>
+          {/* Claims Section */}
+          {scanResult?.credibility?.claims?.length > 0 && (
+            <div className="mt-3">
+              <p className="text-gray-300 font-medium">Claims Found:</p>
+              {scanResult.credibility.claims.map((claim: any, index: number) => (
+                <div key={index} className="border-l-2 border-yellow-500 pl-2 mt-2">
+                  <p className="text-sm text-white">{claim.claim}</p>
+                  <p className={`text-xs ${claim.is_true ? "text-green-400" : "text-red-400"}`}>
+                    Verdict: {String(claim.is_true).toUpperCase()} - {claim.evidence}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
 
+    // Priority 6: Default empty/informational state
     return (
-      <div className="mt-4 p-3 bg-gray-700 rounded-lg animate-fade-in">
-        <h3 className="text-lg font-bold text-white mb-2">NymAI Analysis</h3>
-
-        <div className="mb-3">
-          <p className="text-gray-300">Authenticity (AI Detection):</p>
-          <div className="flex justify-between items-center">
-            <span className="text-2xl">{authScore}% AI</span>
-            {renderScore(authScore)}
-          </div>
-          <p className="text-sm text-gray-400 italic mt-1">
-            "{scanResult?.authenticity?.analysis || "No analysis provided."}"
-          </p>
-        </div>
-
-        <div className="border-t border-gray-600 pt-3">
-          <p className="text-gray-300">Credibility (Factual Truth):</p>
-          <div className="flex justify-between items-center">
-            <span className="text-2xl">{credRiskScore}% Risk</span>
-            {renderScore(credRiskScore)}
-          </div>
-          <p className="text-sm text-gray-400 italic mt-1">
-            "{scanResult?.credibility?.analysis || "No analysis provided."}"
-          </p>
-        </div>
-
-        {scanResult?.credibility?.claims && (
-          <div className="mt-3">
-            <p className="text-gray-300 font-medium">Claims Found:</p>
-            {scanResult.credibility.claims.map((claim: any, index: number) => (
-              <div
-                key={index}
-                className="border-l-2 border-yellow-500 pl-2 mt-2">
-                <p className="text-sm text-white">{claim.claim}</p>
-                <p
-                  className={`text-xs ${
-                    claim.is_true === true ? "text-green-400" : "text-red-400"
-                  }`}>
-                  Verdict: {String(claim.is_true).toUpperCase()} -
-                  {claim.evidence}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="mt-4 p-4 bg-gray-700/50 rounded-lg text-center text-gray-400">
+        <p>Right-click on text or an image to start a scan with NymAI.</p>
       </div>
-    )
+    );
   }
 
   // ---
