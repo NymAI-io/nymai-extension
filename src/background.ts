@@ -57,8 +57,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 // 3. Listen for Precision Path messages from content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'precision-path-scan') {
-    console.log("BACKGROUND: Received Precision Path scan request:", request.scanType)
-    runFullScan(request.content, request.scanType)
+    const requestedScanType = (request.scanType || request.mode || "credibility") as 'credibility' | 'authenticity'
+    console.log("BACKGROUND: Received Precision Path scan request:", requestedScanType, "Payload type:", request.content?.content_type)
+    runFullScan(request.content, requestedScanType)
     sendResponse({ success: true })
   }
   return true // Async response
@@ -69,7 +70,12 @@ async function runFullScan(
   contentToScan: { content_type: string; content_data: string },
   scanType: 'credibility' | 'authenticity' = 'credibility'
 ) {
-  console.log("Running full scan on:", contentToScan.content_type, "Type:", scanType)
+  const normalizedScanType =
+    typeof scanType === "string" && scanType.toLowerCase() === "authenticity"
+      ? "authenticity"
+      : "credibility"
+
+  console.log("Running full scan on:", contentToScan.content_type, "Type:", normalizedScanType)
 
   // Get the real session from storage
   const storageData = await chrome.storage.local.get("nymAiSession")
@@ -85,7 +91,7 @@ async function runFullScan(
 
   // Determine the correct endpoint based on scan type
   const endpointPath =
-    scanType === "authenticity"
+    normalizedScanType === "authenticity"
       ? "/v1/scan/authenticity"
       : "/v1/scan/credibility"
 

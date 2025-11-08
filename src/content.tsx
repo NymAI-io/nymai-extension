@@ -182,6 +182,7 @@ function handleElementClick(event: MouseEvent) {
   // Determine content type and extract data
   let contentType = 'text'
   let contentData = ''
+  const scanTypeForRequest = currentScanType
 
   if (element.tagName === 'IMG') {
     // It's an image
@@ -213,7 +214,7 @@ function handleElementClick(event: MouseEvent) {
   // Send the selected content to the background script
   chrome.runtime.sendMessage({
     action: 'precision-path-scan',
-    scanType: currentScanType,
+    scanType: scanTypeForRequest,
     content: {
       content_type: contentType,
       content_data: contentData
