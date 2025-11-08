@@ -54,9 +54,22 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   // and we have intentionally removed the fallback error case.
 });
 
-// 5. This is the scanning logic (moved from popup.tsx)
-async function runFullScan(contentToScan: { content_type: string; content_data: string }) {
-  console.log("Running full scan on:", contentToScan.content_type)
+// 3. Listen for Precision Path messages from content script
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'precision-path-scan') {
+    console.log("BACKGROUND: Received Precision Path scan request:", request.scanType)
+    runFullScan(request.content, request.scanType)
+    sendResponse({ success: true })
+  }
+  return true // Async response
+})
+
+// 4. This is the scanning logic (moved from popup.tsx)
+async function runFullScan(
+  contentToScan: { content_type: string; content_data: string },
+  scanType: 'credibility' | 'authenticity' = 'credibility'
+) {
+  console.log("Running full scan on:", contentToScan.content_type, "Type:", scanType)
 
   // Get the real session from storage
   const storageData = await chrome.storage.local.get("nymAiSession")
@@ -70,8 +83,13 @@ async function runFullScan(contentToScan: { content_type: string; content_data: 
   }
   const realToken = session.access_token
 
+  // Determine the correct endpoint based on scan type
+  const endpoint = scanType === 'authenticity' 
+    ? "http://127.0.0.1:8000/v1/scan/authenticity"
+    : BACKEND_API_URL
+
   try {
-    const response = await fetch(BACKEND_API_URL, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

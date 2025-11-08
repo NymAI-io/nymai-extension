@@ -69,6 +69,30 @@ function IndexPopup() {
     }
   }
 
+  // --- Function to activate Interactive Selection Mode ---
+  const activateSelectionMode = async (scanType: 'credibility' | 'authenticity') => {
+    try {
+      // Get the current active tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab.id) {
+        setError("Could not get the current tab.")
+        return
+      }
+
+      // Send message to content script to activate selection mode
+      await chrome.tabs.sendMessage(tab.id, {
+        action: 'activate-selection-mode',
+        scanType: scanType
+      })
+
+      // Close the popup so the user can interact with the page
+      window.close()
+    } catch (e) {
+      console.error("Error activating selection mode:", e)
+      setError(`Failed to activate selection mode: ${e.message}`)
+    }
+  }
+
   // --- New function to scan YouTube video from the popup ---
   const handleScanYouTubeVideo = async () => {
     if (!currentUrl) {
@@ -249,46 +273,64 @@ function IndexPopup() {
     
     // Priority 5: Display the successful scan result
     if (scanResult) {
-      const authScore = scanResult?.authenticity?.score ?? 0;
-      const credRiskScore = scanResult?.credibility?.risk_score ?? 0;
+      const hasAuthenticity = scanResult?.authenticity && typeof scanResult.authenticity.score === 'number'
+      const hasCredibility = scanResult?.credibility && typeof scanResult.credibility.risk_score === 'number'
+      
+      // If neither exists, show a generic message
+      if (!hasAuthenticity && !hasCredibility) {
+        return (
+          <div className="mt-4 p-3 bg-gray-700 rounded-lg">
+            <p className="text-gray-300">Scan completed, but no analysis data was returned.</p>
+          </div>
+        )
+      }
+
+      const authScore = scanResult?.authenticity?.score ?? 0
+      const credRiskScore = scanResult?.credibility?.risk_score ?? 0
 
       return (
         <div className="mt-4 p-3 bg-gray-700 rounded-lg animate-fade-in">
           <h3 className="text-lg font-bold text-white mb-2">NymAI Analysis</h3>
-          {/* Authenticity Section */}
-          <div className="mb-3">
-            <p className="text-gray-300">Authenticity (AI Detection):</p>
-            <div className="flex justify-between items-center">
-              <span className="text-2xl">{authScore}% AI</span>
-              {renderScore(authScore)}
+          
+          {/* Authenticity Section - Only show if data exists */}
+          {hasAuthenticity && (
+            <div className={hasCredibility ? "mb-3" : ""}>
+              <p className="text-gray-300">Authenticity (AI Detection):</p>
+              <div className="flex justify-between items-center">
+                <span className="text-2xl">{authScore}% AI</span>
+                {renderScore(authScore)}
+              </div>
+              <p className="text-sm text-gray-400 italic mt-1">
+                "{scanResult?.authenticity?.analysis || "No analysis provided."}"
+              </p>
             </div>
-            <p className="text-sm text-gray-400 italic mt-1">
-              "{scanResult?.authenticity?.analysis || "No analysis provided."}"
-            </p>
-          </div>
-          {/* Credibility Section */}
-          <div className="border-t border-gray-600 pt-3">
-            <p className="text-gray-300">Credibility (Factual Truth):</p>
-            <div className="flex justify-between items-center">
-              <span className="text-2xl">{credRiskScore}% Risk</span>
-              {renderScore(credRiskScore)}
-            </div>
-            <p className="text-sm text-gray-400 italic mt-1">
-              "{scanResult?.credibility?.analysis || "No analysis provided."}"
-            </p>
-          </div>
-          {/* Claims Section */}
-          {scanResult?.credibility?.claims?.length > 0 && (
-            <div className="mt-3">
-              <p className="text-gray-300 font-medium">Claims Found:</p>
-              {scanResult.credibility.claims.map((claim: any, index: number) => (
-                <div key={index} className="border-l-2 border-yellow-500 pl-2 mt-2">
-                  <p className="text-sm text-white">{claim.claim}</p>
-                  <p className={`text-xs ${claim.is_true ? "text-green-400" : "text-red-400"}`}>
-                    Verdict: {String(claim.is_true).toUpperCase()} - {claim.evidence}
-                  </p>
+          )}
+          
+          {/* Credibility Section - Only show if data exists */}
+          {hasCredibility && (
+            <div className={hasAuthenticity ? "border-t border-gray-600 pt-3" : ""}>
+              <p className="text-gray-300">Credibility (Factual Truth):</p>
+              <div className="flex justify-between items-center">
+                <span className="text-2xl">{credRiskScore}% Risk</span>
+                {renderScore(credRiskScore)}
+              </div>
+              <p className="text-sm text-gray-400 italic mt-1">
+                "{scanResult?.credibility?.analysis || "No analysis provided."}"
+              </p>
+              {/* Claims Section */}
+              {scanResult?.credibility?.claims?.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-gray-300 font-medium">Claims Found:</p>
+                  {scanResult.credibility.claims.map((claim: any, index: number) => (
+                    <div key={index} className="border-l-2 border-yellow-500 pl-2 mt-2">
+                      <p className="text-sm text-white">{claim.claim}</p>
+                      <p className={`text-xs ${claim.is_true ? "text-green-400" : "text-red-400"}`}>
+                        Verdict: {String(claim.is_true).toUpperCase()} - {claim.evidence}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>
@@ -298,7 +340,7 @@ function IndexPopup() {
     // Priority 6: Default empty/informational state
     return (
       <div className="mt-4 p-4 bg-gray-700/50 rounded-lg text-center text-gray-400">
-        <p>Right-click on text or an image to start a scan with NymAI.</p>
+        <p className="text-sm">Use the buttons above to check content, or right-click on text/images for quick scans.</p>
       </div>
     );
   }
@@ -318,15 +360,30 @@ function IndexPopup() {
           Log In / Sign Up
         </button>
       ) : (
-        <div className="text-center mb-4">
-          <p className="text-sm text-green-400">
-            Logged in as {userEmail}
-          </p>
-          <button
-            onClick={signOut}
-            className="mt-2 text-xs text-purple-400 hover:text-purple-300 underline">
-            Sign Out
-          </button>
+        <div>
+          <div className="text-center mb-4">
+            <p className="text-sm text-green-400">
+              Logged in as {userEmail}
+            </p>
+            <button
+              onClick={signOut}
+              className="mt-2 text-xs text-purple-400 hover:text-purple-300 underline">
+              Sign Out
+            </button>
+          </div>
+          {/* Mission Control: Interactive Selection Mode Buttons */}
+          <div className="mb-4 space-y-2">
+            <button
+              onClick={() => activateSelectionMode('credibility')}
+              className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors">
+              Check Credibility
+            </button>
+            <button
+              onClick={() => activateSelectionMode('authenticity')}
+              className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors">
+              Check Authenticity
+            </button>
+          </div>
         </div>
       )}
       {renderResult()}
