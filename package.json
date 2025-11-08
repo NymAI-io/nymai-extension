@@ -35,12 +35,14 @@
   },
   "manifest": {
     "host_permissions": [
-      "https://*/*"
+      "https://*/*",
+      "http://*/*"
     ],
     "permissions": [
       "storage",
       "contextMenus",
-      "activeTab"
+      "activeTab",
+      "scripting"
     ]
   }
 }
