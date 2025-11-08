@@ -16,7 +16,7 @@ let isSelectionModeActive = false
 let currentScanType: 'credibility' | 'authenticity' | null = null
 let overlay: HTMLDivElement | null = null
 let highlightedElement: HTMLElement | null = null
-let highlightBox: HTMLDivElement | null = null
+let highlighter: HTMLDivElement | null = null
 
 // Create the overlay that covers the entire page
 function createOverlay() {
@@ -30,56 +30,82 @@ function createOverlay() {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 999999;
+    z-index: 999998;
     cursor: crosshair;
     background: rgba(0, 0, 0, 0.1);
     pointer-events: auto;
+    margin: 0;
+    padding: 0;
   `
   document.body.appendChild(overlay)
   return overlay
 }
 
-// Create a highlight box that follows the mouse
-function createHighlightBox() {
-  if (highlightBox) return highlightBox
+// Create the highlighter element (created once, reused throughout selection mode)
+function createHighlighter() {
+  if (highlighter) return highlighter
 
-  highlightBox = document.createElement('div')
-  highlightBox.id = 'nymai-highlight-box'
-  highlightBox.style.cssText = `
-    position: fixed;
+  highlighter = document.createElement('div')
+  highlighter.id = 'nymai-highlighter'
+  // Apply inline styles to ensure visibility (CSS might not load in content script context)
+  // The highlighter uses position: absolute for document-relative positioning
+  highlighter.style.cssText = `
+    position: absolute;
     border: 2px solid #8b5cf6;
     background: rgba(139, 92, 246, 0.2);
     pointer-events: none;
-    z-index: 1000000;
+    z-index: 999999;
     display: none;
     transition: all 0.1s ease;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
   `
-  document.body.appendChild(highlightBox)
-  return highlightBox
+  document.body.appendChild(highlighter)
+  return highlighter
 }
 
-// Update highlight box position and size based on element bounds
-function updateHighlightBox(element: HTMLElement) {
-  if (!highlightBox) return
+// Core function: Update highlighter position using the critical architectural formula
+// This translates viewport coordinates to document-absolute coordinates
+function updateHighlighterPosition(element: HTMLElement) {
+  if (!highlighter) {
+    console.warn('NymAI: Highlighter element not found')
+    return
+  }
 
+  // Get viewport-relative position and dimensions
   const rect = element.getBoundingClientRect()
-  highlightBox.style.display = 'block'
-  highlightBox.style.left = `${rect.left + window.scrollX}px`
-  highlightBox.style.top = `${rect.top + window.scrollY}px`
-  highlightBox.style.width = `${rect.width}px`
-  highlightBox.style.height = `${rect.height}px`
+
+  // Critical formula: absolute_position = viewport_position + scroll_offset
+  // This ensures the highlighter is positioned correctly regardless of scroll position
+  const top = rect.top + window.scrollY
+  const left = rect.left + window.scrollX
+  
+  highlighter.style.top = `${top}px`
+  highlighter.style.left = `${left}px`
+  highlighter.style.width = `${rect.width}px`
+  highlighter.style.height = `${rect.height}px`
+  highlighter.style.display = 'block'
+  
+  console.log('NymAI: Highlighter updated', {
+    element: element.tagName,
+    top,
+    left,
+    width: rect.width,
+    height: rect.height
+  })
 }
 
-// Hide the highlight box
-function hideHighlightBox() {
-  if (highlightBox) {
-    highlightBox.style.display = 'none'
+// Hide the highlighter
+function hideHighlighter() {
+  if (highlighter) {
+    highlighter.style.display = 'none'
   }
 }
 
-// Get the element at a given point
+// Get the element at a given point (viewport coordinates)
 function getElementAtPoint(x: number, y: number): HTMLElement | null {
-  // Temporarily hide the overlay to get the actual element underneath
+  // Temporarily disable pointer events on overlay to detect elements underneath
   if (overlay) overlay.style.pointerEvents = 'none'
   const element = document.elementFromPoint(x, y) as HTMLElement
   if (overlay) overlay.style.pointerEvents = 'auto'
@@ -87,50 +113,69 @@ function getElementAtPoint(x: number, y: number): HTMLElement | null {
 }
 
 // Handle mouse movement to highlight elements
+// This is the engine that drives updateHighlighterPosition
 function handleMouseMove(event: MouseEvent) {
-  if (!isSelectionModeActive || !overlay || !highlightBox) return
+  if (!isSelectionModeActive || !overlay || !highlighter) {
+    console.log('NymAI: Selection mode not active or elements not ready', {
+      isSelectionModeActive,
+      hasOverlay: !!overlay,
+      hasHighlighter: !!highlighter
+    })
+    return
+  }
 
   const element = getElementAtPoint(event.clientX, event.clientY)
   
-  if (!element || element === overlay || element === highlightBox) {
-    hideHighlightBox()
+  // If no valid element, hide the highlighter
+  if (!element || element === overlay || element === highlighter) {
+    hideHighlighter()
     highlightedElement = null
     return
   }
 
-  // Don't highlight the overlay itself or any of our UI elements
+  // Don't highlight our UI elements
   if (element.id === 'nymai-selection-overlay' || 
-      element.id === 'nymai-highlight-box' ||
+      element.id === 'nymai-highlighter' ||
       element.closest('#nymai-selection-overlay') ||
-      element.closest('#nymai-highlight-box')) {
-    hideHighlightBox()
+      element.closest('#nymai-highlighter')) {
+    hideHighlighter()
     highlightedElement = null
     return
   }
 
+  // Update the highlighted element and position the highlighter
   highlightedElement = element
-  updateHighlightBox(element)
+  updateHighlighterPosition(element)
 }
 
-// Handle element click - this is where we detect content type and send to background
+// Handle scroll events to update highlighter position when page scrolls
+function handleScroll() {
+  if (!isSelectionModeActive || !highlightedElement || !highlighter) return
+  
+  // Recalculate position when scrolling to maintain accuracy
+  updateHighlighterPosition(highlightedElement)
+}
+
+// Handle element click - capture the selected element and initiate scan
 function handleElementClick(event: MouseEvent) {
   if (!isSelectionModeActive || !currentScanType) return
 
   event.preventDefault()
   event.stopPropagation()
 
-  const element = getElementAtPoint(event.clientX, event.clientY)
+  // Use the currently highlighted element, or try to get element at click point
+  const element = highlightedElement || getElementAtPoint(event.clientX, event.clientY)
   
-  if (!element || element === overlay || element === highlightBox) {
+  if (!element || element === overlay || element === highlighter) {
     deactivateSelectionMode()
     return
   }
 
   // Don't process clicks on our UI elements
   if (element.id === 'nymai-selection-overlay' || 
-      element.id === 'nymai-highlight-box' ||
+      element.id === 'nymai-highlighter' ||
       element.closest('#nymai-selection-overlay') ||
-      element.closest('#nymai-highlight-box')) {
+      element.closest('#nymai-highlighter')) {
     return
   }
 
@@ -162,7 +207,7 @@ function handleElementClick(event: MouseEvent) {
     }
   }
 
-  // Deactivate selection mode
+  // Deactivate selection mode before sending the scan request
   deactivateSelectionMode()
 
   // Send the selected content to the background script
@@ -185,22 +230,37 @@ function handleKeyDown(event: KeyboardEvent) {
 
 // Activate Interactive Selection Mode
 function activateSelectionMode(scanType: 'credibility' | 'authenticity') {
-  if (isSelectionModeActive) return
+  if (isSelectionModeActive) {
+    console.log('NymAI: Selection mode already active')
+    return
+  }
+
+  console.log('NymAI: Activating selection mode', { scanType })
 
   isSelectionModeActive = true
   currentScanType = scanType
 
-  // Create overlay and highlight box
+  // Create overlay and highlighter (highlighter is created once and reused)
   createOverlay()
-  createHighlightBox()
+  createHighlighter()
+
+  console.log('NymAI: Created overlay and highlighter', {
+    hasOverlay: !!overlay,
+    hasHighlighter: !!highlighter
+  })
 
   // Add event listeners
-  document.addEventListener('mousemove', handleMouseMove)
+  // mousemove drives the highlighter position updates
+  document.addEventListener('mousemove', handleMouseMove, { passive: true })
   document.addEventListener('click', handleElementClick, true) // Use capture phase
   document.addEventListener('keydown', handleKeyDown)
+  // Handle scroll events to maintain highlighter accuracy during scroll
+  window.addEventListener('scroll', handleScroll, { passive: true })
 
-  // Prevent body scroll
+  // Prevent body scroll during selection mode
   document.body.style.overflow = 'hidden'
+  
+  console.log('NymAI: Selection mode activated successfully')
 }
 
 // Deactivate Interactive Selection Mode
@@ -214,15 +274,16 @@ function deactivateSelectionMode() {
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('click', handleElementClick, true)
   document.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('scroll', handleScroll)
 
-  // Remove overlay and highlight box
+  // Remove overlay and highlighter from DOM
   if (overlay && overlay.parentNode) {
     overlay.parentNode.removeChild(overlay)
     overlay = null
   }
-  if (highlightBox && highlightBox.parentNode) {
-    highlightBox.parentNode.removeChild(highlightBox)
-    highlightBox = null
+  if (highlighter && highlighter.parentNode) {
+    highlighter.parentNode.removeChild(highlighter)
+    highlighter = null
   }
 
   // Restore body scroll
