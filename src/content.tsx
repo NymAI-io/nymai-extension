@@ -297,7 +297,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // Handle activation of Interactive Selection Mode from popup
   if (request.action === 'activate-selection-mode') {
-    activateSelectionMode(request.scanType)
+    activateSelectionMode(request.scanType || request.mode)
     sendResponse({ success: true })
     return true // Async response
   }
