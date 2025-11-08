@@ -346,14 +346,24 @@ function IndexPopup() {
               className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors">
               Upgrade to Pro
             </button>
+            <button
+              onClick={handleStartNewScan}
+              className="mt-3 w-full py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors">
+              Start New Scan
+            </button>
           </div>
         )
       }
 
       // Generic error display
       return (
-        <div className="mt-4 p-3 bg-red-800 text-red-200 rounded-lg text-sm">
-          {isActivationError ? error : `Last scan failed: ${error}`}
+        <div className="mt-4 p-3 bg-red-800 text-red-200 rounded-lg text-sm space-y-3">
+          <div>{isActivationError ? error : `Last scan failed: ${error}`}</div>
+          <button
+            onClick={handleStartNewScan}
+            className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors">
+            Start New Scan
+          </button>
         </div>
       )
     }
