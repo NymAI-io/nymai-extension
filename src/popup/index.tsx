@@ -175,7 +175,7 @@ function IndexPopup() {
         throw new Error("You must be logged in to scan.")
       }
 
-      const response = await fetch("https://nymai-backend.onrender.com/v1/scan", {
+      const response = await fetch("https://nymai-backend.onrender.com/v1/scan/credibility", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

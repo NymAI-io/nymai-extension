@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js"
 // --- COPY KEYS FROM YOUR POPUP.TSX ---
 const SUPABASE_URL = "https://rpnprnyoylifxxstdxzg.supabase.co"
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwbnBybnlveWxpZnh4c3RkeHpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwMjkwMTgsImV4cCI6MjA3NzYwNTAxOH0.nk-uMk7TZQWhlrKzwJ2AOobIHeby2FzuGEP92oRxjQc"
-const BACKEND_API_URL = "https://nymai-backend.onrender.com/v1/scan"
+const NYMAI_API_BASE_URL = "https://nymai-backend.onrender.com"
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 // 1. Create the right-click context menu when the extension is installed
@@ -84,12 +84,15 @@ async function runFullScan(
   const realToken = session.access_token
 
   // Determine the correct endpoint based on scan type
-  const endpoint = scanType === 'authenticity' 
-    ? "https://nymai-backend.onrender.com/v1/scan/authenticity"
-    : BACKEND_API_URL
+  const endpointPath =
+    scanType === "authenticity"
+      ? "/v1/scan/authenticity"
+      : "/v1/scan/credibility"
+
+  const endpointUrl = `${NYMAI_API_BASE_URL}${endpointPath}`
 
   try {
-    const response = await fetch(endpoint, {
+    const response = await fetch(endpointUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -98,7 +101,25 @@ async function runFullScan(
       body: JSON.stringify(contentToScan)
     })
 
-    const data = await response.json()
+    const rawBody = await response.text()
+    const contentType = response.headers.get("content-type") ?? ""
+
+    let data: any
+    if (contentType.includes("application/json")) {
+      try {
+        data = JSON.parse(rawBody)
+      } catch (parseError) {
+        throw new Error(
+          `Backend returned invalid JSON (status ${response.status}): ${String(parseError)}`
+        )
+      }
+    } else {
+      // Surface the first part of the response body to help debugging (Render returns HTML error pages)
+      const snippet = rawBody ? rawBody.slice(0, 200) : "(empty response)"
+      throw new Error(
+        `Backend returned non-JSON response (status ${response.status}): ${snippet}`
+      )
+    }
     
     // --- THIS IS THE NEW LOGIC ---
     if (response.status === 402) {
