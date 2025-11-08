@@ -46,7 +46,7 @@ function IndexPopup() {
       }
 
       const response = await fetch(
-        "http://127.0.0.1:8000/v1/create-checkout-session",
+        "https://nymai-backend.onrender.com/v1/create-checkout-session",
         {
           method: "POST",
           headers: {
@@ -175,7 +175,7 @@ function IndexPopup() {
         throw new Error("You must be logged in to scan.")
       }
 
-      const response = await fetch("http://127.0.0.1:8000/v1/scan", {
+      const response = await fetch("https://nymai-backend.onrender.com/v1/scan", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
