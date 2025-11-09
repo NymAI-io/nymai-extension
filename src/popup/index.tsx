@@ -8,6 +8,7 @@ const SUPABASE_URL = "https://rpnprnyoylifxxstdxzg.supabase.co"
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwbnBybnlveWxpZnh4c3RkeHpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwMjkwMTgsImV4cCI6MjA3NzYwNTAxOH0.nk-uMk7TZQWhlrKzwJ2AOobIHeby2FzuGEP92oRxjQc"
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+const NYMAI_API_BASE_URL = "https://nymai-image-scraper.onrender.com"
 
 function IndexPopup() {
   // State management for the hybrid UI
@@ -45,16 +46,13 @@ function IndexPopup() {
         return
       }
 
-      const response = await fetch(
-        "https://nymai-backend.onrender.com/v1/create-checkout-session",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`
-          }
+      const response = await fetch(`${NYMAI_API_BASE_URL}/v1/create-checkout-session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
         }
-      )
+      })
 
       const data = await response.json()
 
@@ -175,7 +173,7 @@ function IndexPopup() {
         throw new Error("You must be logged in to scan.")
       }
 
-      const response = await fetch("https://nymai-backend.onrender.com/v1/scan/credibility", {
+      const response = await fetch(`${NYMAI_API_BASE_URL}/v1/scan/credibility`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
