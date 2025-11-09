@@ -2,8 +2,8 @@
 import { createClient } from "@supabase/supabase-js"
 
 // --- COPY KEYS FROM YOUR POPUP.TSX ---
-const SUPABASE_URL = "https://rpnprnyoylifxxstdxzg.supabase.co"
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwbnBybnlveWxpZnh4c3RkeHpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwMjkwMTgsImV4cCI6MjA3NzYwNTAxOH0.nk-uMk7TZQWhlrKzwJ2AOobIHeby2FzuGEP92oRxjQc"
+const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL as string
+const SUPABASE_KEY = process.env.PLASMO_PUBLIC_SUPABASE_ANON_KEY as string
 const NYMAI_API_BASE_URL = "https://nymai-image-scraper.onrender.com"
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
