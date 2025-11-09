@@ -9,6 +9,7 @@ type Provider = "google" | "github";
 const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL as string
 const SUPABASE_ANON_KEY = process.env.PLASMO_PUBLIC_SUPABASE_ANON_KEY as string
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+const storageArea = chrome.storage.session ?? chrome.storage.local
 
 function Login() {
   const [email, setEmail] = useState("")
@@ -28,9 +29,9 @@ function Login() {
         password
       })
       if (error) {
-        setError(error.message)
+        setError("Unable to log in with those credentials.")
       } else if (data.session) {
-        await chrome.storage.local.set({ nymAiSession: data.session })
+        await storageArea.set({ nymAiSession: data.session })
         window.close()
       }
     } catch (e) {
@@ -51,10 +52,10 @@ function Login() {
         password
       })
       if (error) {
-        setError(error.message)
+        setError("We could not create your account. Please try again.")
       } else if (data.session) {
         // Auto-confirm is on, user is logged in
-        await chrome.storage.local.set({ nymAiSession: data.session })
+        await storageArea.set({ nymAiSession: data.session })
         window.close()
       } else if (data.user) {
         // Auto-confirm is off, email confirmation needed

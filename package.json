@@ -35,9 +35,13 @@
   },
   "manifest": {
     "host_permissions": [
-      "https://*/*",
-      "http://*/*"
+      "https://rpnprnyoylifxxstdxzg.supabase.co/*",
+      "https://nymai-backend.onrender.com/*",
+      "https://nymai-image-scraper.onrender.com/*"
     ],
+    "content_security_policy": {
+      "extension_pages": "script-src 'self'; object-src 'self';"
+    },
     "permissions": [
       "storage",
       "contextMenus",

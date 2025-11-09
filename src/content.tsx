@@ -17,6 +17,43 @@ let currentScanType: 'credibility' | 'authenticity' | null = null
 let overlay: HTMLDivElement | null = null
 let highlightedElement: HTMLElement | null = null
 let highlighter: HTMLDivElement | null = null
+const MAX_TEXT_LENGTH = 5000
+
+function sanitizeText(text: string): string {
+  if (!text) return ""
+  const cleaned = text.replace(/\s+/g, " ").replace(/<script.*?>.*?<\/script>/gi, "")
+  return cleaned.trim().slice(0, MAX_TEXT_LENGTH)
+}
+
+function sanitizeUrl(raw: string): string | null {
+  if (!raw) return null
+  try {
+    const resolved = new URL(raw, document.location.href)
+    if (resolved.protocol !== "https:") {
+      console.warn("NymAI: Blocking non-HTTPS media resource", resolved.href)
+      return null
+    }
+    return resolved.href
+  } catch (error) {
+    console.warn("NymAI: Invalid URL encountered", raw, error)
+    return null
+  }
+}
+
+function sendSanitizedPayload(
+  scanTypeForRequest: 'credibility' | 'authenticity',
+  contentType: string,
+  contentData: string
+) {
+  chrome.runtime.sendMessage({
+    action: 'precision-path-scan',
+    scanType: scanTypeForRequest,
+    content: {
+      content_type: contentType,
+      content_data: contentData
+    }
+  })
+}
 
 // Create the overlay that covers the entire page
 function createOverlay() {
@@ -187,39 +224,58 @@ function handleElementClick(event: MouseEvent) {
   if (element.tagName === 'IMG') {
     // It's an image
     contentType = 'image'
-    contentData = (element as HTMLImageElement).src
+    const sanitized = sanitizeUrl((element as HTMLImageElement).src)
+    if (!sanitized) {
+      deactivateSelectionMode()
+      alert("NymAI could not process this image because it is not served over HTTPS.")
+      return
+    }
+    contentData = sanitized
   } else if (element.tagName === 'VIDEO') {
     // It's a video
     contentType = 'video'
-    contentData = (element as HTMLVideoElement).src || (element as HTMLVideoElement).currentSrc
+    const candidate = (element as HTMLVideoElement).src || (element as HTMLVideoElement).currentSrc
+    const sanitized = sanitizeUrl(candidate)
+    if (!sanitized) {
+      deactivateSelectionMode()
+      alert("NymAI could not process this video because it is not served over HTTPS.")
+      return
+    }
+    contentData = sanitized
   } else if (element.tagName === 'AUDIO') {
     // It's audio
     contentType = 'audio'
-    contentData = (element as HTMLAudioElement).src || (element as HTMLAudioElement).currentSrc
+    const candidate = (element as HTMLAudioElement).src || (element as HTMLAudioElement).currentSrc
+    const sanitized = sanitizeUrl(candidate)
+    if (!sanitized) {
+      deactivateSelectionMode()
+      alert("NymAI could not process this audio source because it is not served over HTTPS.")
+      return
+    }
+    contentData = sanitized
   } else {
     // It's text - get the element's text content
     contentType = 'text'
-    contentData = element.innerText || element.textContent || ''
+    contentData = sanitizeText(element.innerText || element.textContent || '')
     
     // If no text in the element, try to get selected text
     if (!contentData.trim()) {
       const selection = window.getSelection()
-      contentData = selection ? selection.toString() : ''
+      contentData = sanitizeText(selection ? selection.toString() : '')
     }
+  }
+
+  if (!contentData) {
+    deactivateSelectionMode()
+    alert("NymAI could not capture meaningful content from this selection.")
+    return
   }
 
   // Deactivate selection mode before sending the scan request
   deactivateSelectionMode()
 
   // Send the selected content to the background script
-  chrome.runtime.sendMessage({
-    action: 'precision-path-scan',
-    scanType: scanTypeForRequest,
-    content: {
-      content_type: contentType,
-      content_data: contentData
-    }
-  })
+  sendSanitizedPayload(scanTypeForRequest, contentType, contentData)
 }
 
 // Handle Escape key to cancel selection mode
@@ -309,25 +365,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (targetElement) {
       // --- Multimodal logic for Fast Path ---
       if (targetElement.tagName === "IMG") {
+        const sanitized = sanitizeUrl((targetElement as HTMLImageElement).src)
+        if (!sanitized) {
+          sendResponse(null)
+          return true
+        }
         sendResponse({
           content_type: "image",
-          content_data: (targetElement as HTMLImageElement).src
+          content_data: sanitized
         })
       } else if (targetElement.tagName === "VIDEO") {
+        const candidate = (targetElement as HTMLVideoElement).src || (targetElement as HTMLVideoElement).currentSrc
+        const sanitized = sanitizeUrl(candidate)
+        if (!sanitized) {
+          sendResponse(null)
+          return true
+        }
         sendResponse({
           content_type: "video",
-          content_data: (targetElement as HTMLVideoElement).src
+          content_data: sanitized
         })
       } else {
         sendResponse({
           content_type: "text",
-          content_data: targetElement.innerText || window.getSelection().toString()
+          content_data: sanitizeText(targetElement.innerText || window.getSelection().toString())
         })
       }
     } else {
       sendResponse({
         content_type: "text",
-        content_data: document.body.innerText
+        content_data: sanitizeText(document.body.innerText)
       })
     }
     return true // Async

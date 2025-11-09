@@ -7,7 +7,9 @@ import { createClient } from "@supabase/supabase-js"
 const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL as string
 const SUPABASE_ANON_KEY = process.env.PLASMO_PUBLIC_SUPABASE_ANON_KEY as string
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-const NYMAI_API_BASE_URL = "https://nymai-image-scraper.onrender.com"
+const NYMAI_API_BASE_URL = process.env.PLASMO_PUBLIC_NYMAI_API_BASE_URL as string
+const storageArea = chrome.storage.session ?? chrome.storage.local
+const REQUEST_TIMEOUT_MS = 30000
 
 function IndexPopup() {
   // State management for the hybrid UI
@@ -27,7 +29,7 @@ function IndexPopup() {
   // --- Sign out function ---
   const signOut = async () => {
     await supabase.auth.signOut()
-    await chrome.storage.local.remove("nymAiSession")
+    await storageArea.remove("nymAiSession")
     setUserEmail(null)
     setScanResult(null)
     setError("")
@@ -37,7 +39,7 @@ function IndexPopup() {
   // --- Upgrade to Pro function ---
   const handleUpgrade = async () => {
     try {
-      const storageData = await chrome.storage.local.get("nymAiSession")
+      const storageData = await storageArea.get("nymAiSession")
       const session = storageData.nymAiSession
 
       if (!session || !session.access_token) {
@@ -45,13 +47,17 @@ function IndexPopup() {
         return
       }
 
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
       const response = await fetch(`${NYMAI_API_BASE_URL}/v1/create-checkout-session`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`
-        }
+        },
+        signal: controller.signal
       })
+      clearTimeout(timeout)
 
       const data = await response.json()
 
@@ -63,7 +69,11 @@ function IndexPopup() {
         chrome.tabs.create({ url: data.url })
       }
     } catch (e: any) {
-      setError(`Upgrade failed: ${e.message}`)
+      if (e?.name === "AbortError") {
+        setError("Upgrade failed: request timed out.")
+      } else {
+        setError("Upgrade failed: please try again.")
+      }
     }
   }
 
@@ -166,12 +176,14 @@ function IndexPopup() {
 
     try {
       // This logic is similar to runFullScan in background.ts
-      const storageData = await chrome.storage.local.get("nymAiSession")
+      const storageData = await storageArea.get("nymAiSession")
       const session = storageData.nymAiSession
       if (!session || !session.access_token) {
         throw new Error("You must be logged in to scan.")
       }
 
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
       const response = await fetch(`${NYMAI_API_BASE_URL}/v1/scan/credibility`, {
         method: "POST",
         headers: {
@@ -181,8 +193,10 @@ function IndexPopup() {
         body: JSON.stringify({
           content_type: "video",
           content_data: currentUrl
-        })
+        }),
+        signal: controller.signal
       })
+      clearTimeout(timeout)
 
       const data = await response.json()
 
@@ -194,7 +208,11 @@ function IndexPopup() {
       // The storage listener will update the UI, but we can set it here for immediate feedback
       setScanResult(data)
     } catch (e: any) {
-      setError(`Scan failed: ${e.message}`)
+      if (e?.name === "AbortError") {
+        setError("Scan failed: request timed out.")
+      } else {
+        setError("Scan failed: please try again.")
+      }
     } finally {
       setLoading(false)
     }
@@ -208,7 +226,7 @@ function IndexPopup() {
     setErrorCode(null)
     
     // Clear persisted state in chrome.storage.local
-    await chrome.storage.local.remove("lastScanResult")
+    await storageArea.remove("lastScanResult")
   }
 
   // --- Data Fetching: Load scan results from chrome.storage.local ---
@@ -223,7 +241,7 @@ function IndexPopup() {
 
         if (userError || !user) {
           setUserEmail(null)
-          await chrome.storage.local.remove("nymAiSession")
+          await storageArea.remove("nymAiSession")
         } else {
           const {
             data: { session }
@@ -231,19 +249,23 @@ function IndexPopup() {
 
           if (session) {
             setUserEmail(session.user.email)
-            await chrome.storage.local.set({ nymAiSession: session })
+            await storageArea.set({ nymAiSession: session })
           } else {
             setUserEmail(null)
-            await chrome.storage.local.remove("nymAiSession")
+            await storageArea.remove("nymAiSession")
           }
         }
 
-        // Load the last scan result from chrome.storage.local
-        const resultData = await chrome.storage.local.get("lastScanResult")
+        // Load the last scan result from storage
+        const resultData = await storageArea.get("lastScanResult")
         if (resultData.lastScanResult) {
           if (resultData.lastScanResult.error) {
             // It's an error result
-            setError(resultData.lastScanResult.error)
+            if (resultData.lastScanResult.error_code === 402) {
+              setError(resultData.lastScanResult.error)
+            } else {
+              setError("Scan failed: please try again.")
+            }
             setErrorCode(resultData.lastScanResult.error_code || null)
             setScanResult(null)
           } else {
@@ -286,7 +308,11 @@ function IndexPopup() {
         if (newData) {
           if (newData.error) {
             // It's an error result
-            setError(newData.error)
+            if (newData.error_code === 402) {
+              setError(newData.error)
+            } else {
+              setError("Scan failed: please try again.")
+            }
             setErrorCode(newData.error_code || null)
             setScanResult(null)
           } else {
