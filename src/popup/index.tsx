@@ -301,7 +301,37 @@ function IndexPopup() {
   useEffect(() => {
     async function loadPopupData() {
       try {
-        // Load user authentication state
+        // SESSION RE-HYDRATION: Check storage for saved session and restore it
+        console.log('NymAI: Checking storage for saved session...')
+        const storage = await storageArea.get("nymAiSession")
+        
+        if (storage.nymAiSession) {
+          console.log('NymAI: Found saved session in storage, re-hydrating...')
+          try {
+            // Restore the session in Supabase client
+            const { data: sessionData, error: sessionError } = await supabase.auth.setSession(storage.nymAiSession)
+            
+            if (sessionError) {
+              console.error('NymAI: Failed to restore session:', sessionError)
+              // If session is invalid, remove it from storage
+              await storageArea.remove("nymAiSession")
+            } else if (sessionData?.session) {
+              console.log('NymAI: Session restored successfully')
+              // Immediately update UI to reflect logged-in state
+              setUserEmail(sessionData.session.user.email || sessionData.user?.email || null)
+              // Ensure session is saved (in case it was updated)
+              await storageArea.set({ nymAiSession: sessionData.session })
+            }
+          } catch (rehydrateError: any) {
+            console.error('NymAI: Error during session re-hydration:', rehydrateError)
+            // If re-hydration fails, clear the invalid session
+            await storageArea.remove("nymAiSession")
+          }
+        } else {
+          console.log('NymAI: No saved session found in storage')
+        }
+
+        // Load user authentication state (will use re-hydrated session if available)
         const {
           data: { user },
           error: userError
