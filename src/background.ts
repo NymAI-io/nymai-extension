@@ -126,35 +126,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return false
 })
 
-// Listen for tab updates to proactively close the login tab after authentication
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // Only process updates for the tracked login tab
-  if (loginTabId === null || tabId !== loginTabId) {
-    return
-  }
-
-  // Check if the tab has completed loading and redirected to nymai.io
-  if (changeInfo.status === 'complete' && tab.url) {
-    const url = tab.url
-    
-    // Check if the tab has redirected to our landing page
-    if (url.startsWith('https://www.nymai.io') || url.startsWith('https://nymai.io')) {
-      console.log('NymAI: Login tab redirected to landing page, will close after delay')
-      
-      // Wait a short delay to ensure the landing page has time to send the session message
-      // Then proactively close the tab (backup in case window.close() fails)
-      setTimeout(() => {
-        if (loginTabId !== null) {
-          chrome.tabs.remove(loginTabId, () => {
-            console.log('NymAI: Login tab closed proactively')
-            loginTabId = null // Reset tracking
-          })
-        }
-      }, 1000) // 1 second delay to ensure message is sent
-    }
-  }
-})
-
 // 5. Listen for external messages from the landing page (OAuth flow)
 chrome.runtime.onMessageExternal.addListener(
   async (message, sender, sendResponse) => {
@@ -190,9 +161,16 @@ chrome.runtime.onMessageExternal.addListener(
         
         console.log('NymAI: Session saved successfully from landing page')
         
-        // Reset login tab tracking since authentication is complete
-        // (The tab will be closed by the onUpdated listener or by window.close() from the landing page)
-        loginTabId = null
+        // Broadcast login completion to any open popups so they can refresh their UI
+        chrome.runtime.sendMessage({ type: 'NYMAI_LOGIN_COMPLETE' })
+        
+        // Close the login tab immediately and reliably
+        if (loginTabId !== null) {
+          chrome.tabs.remove(loginTabId, () => {
+            console.log('NymAI: Login tab closed after successful authentication')
+          })
+          loginTabId = null // Reset tracking
+        }
         
         sendResponse({ success: true })
         return true

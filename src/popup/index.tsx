@@ -415,6 +415,53 @@ function IndexPopup() {
     }
   }, []) // Empty dependency array ensures this runs only once on mount
 
+  // Listen for login completion messages from background script
+  useEffect(() => {
+    const messageListener = (message: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
+      if (message.type === 'NYMAI_LOGIN_COMPLETE') {
+        console.log('NymAI: Received login complete message, refreshing popup state')
+        // Re-run the data loading function to refresh the UI with new login state
+        async function refreshPopupData() {
+          try {
+            // Load user authentication state
+            const {
+              data: { user },
+              error: userError
+            } = await supabase.auth.getUser()
+
+            if (userError || !user) {
+              setUserEmail(null)
+              await storageArea.remove("nymAiSession")
+            } else {
+              const {
+                data: { session }
+              } = await supabase.auth.getSession()
+
+              if (session) {
+                setUserEmail(session.user.email)
+                await storageArea.set({ nymAiSession: session })
+              } else {
+                setUserEmail(null)
+                await storageArea.remove("nymAiSession")
+              }
+            }
+          } catch (e: any) {
+            console.error("Error refreshing popup data after login:", e)
+          }
+        }
+        refreshPopupData()
+      }
+      return true // Indicates we will send a response asynchronously
+    }
+
+    chrome.runtime.onMessage.addListener(messageListener)
+
+    // Cleanup: remove listener when popup closes
+    return () => {
+      chrome.runtime.onMessage.removeListener(messageListener)
+    }
+  }, [])
+
   // --- Helper function to render score indicators ---
   const renderScore = (score: number, isAuthenticity: boolean = false) => {
     if (isAuthenticity) {
