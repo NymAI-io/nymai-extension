@@ -80,24 +80,14 @@ function Login() {
   }
 
   return (
-    <div className="w-full h-screen p-8 bg-gradient-to-b from-gray-900 to-gray-800 flex justify-center items-start font-sans">
+    <div className="w-full h-screen p-8 bg-white flex justify-center items-start font-sans">
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center space-x-2 mb-8">
-          <div className="w-10 h-10 bg-gradient-to-br from-brand-teal to-brand-tealLight rounded-lg flex items-center justify-center">
-            <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="32" height="32" rx="6" fill="url(#gradient)"/>
-              <defs>
-                <linearGradient id="gradient" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#4fd1c5"/>
-                  <stop offset="100%" stopColor="#81e6d9"/>
-                </linearGradient>
-              </defs>
-              <path d="M8 10 L8 22 M8 10 L20 22 M20 10 L20 22" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-            </svg>
-          </div>
-          <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-brand-teal to-brand-tealLight">
-            NymAI
-          </h1>
+          <img 
+            src={chrome.runtime.getURL('NymAI_full_logo.svg')} 
+            alt="NymAI Logo" 
+            className="h-12"
+          />
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -106,7 +96,7 @@ function Login() {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-brand-teal"
+            className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-teal"
             required
           />
           <input
@@ -114,25 +104,25 @@ function Login() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-brand-teal"
+            className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-teal"
             required
           />
 
-          {error && <p className="text-red-400 text-sm">{error}</p>}
-          {message && <p className="text-green-400 text-sm">{message}</p>}
+          {error && <p className="text-red-600 text-sm">{error}</p>}
+          {message && <p className="text-green-600 text-sm">{message}</p>}
 
           <div className="flex space-x-4">
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 py-2 bg-brand-teal hover:bg-brand-tealLight text-brand-dark font-semibold rounded-lg transition-colors disabled:bg-gray-500 disabled:text-white shadow-lg shadow-brand-teal/20">
+              className="flex-1 py-2 bg-brand-teal hover:bg-brand-tealLight text-brand-dark font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:text-white shadow-lg shadow-brand-teal/20">
               {loading ? "Loading..." : "Log In"}
             </button>
             <button
               type="button"
               onClick={handleSignUp}
               disabled={loading}
-              className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-500">
+              className="flex-1 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg transition-colors disabled:bg-gray-400">
               {loading ? "Loading..." : "Sign Up"}
             </button>
           </div>
@@ -140,10 +130,10 @@ function Login() {
 
         <div className="relative my-6">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-600" />
+            <div className="w-full border-t border-gray-300" />
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-gray-900 text-gray-400">Or continue with</span>
+            <span className="px-2 bg-white text-gray-500">Or continue with</span>
           </div>
         </div>
 
@@ -152,7 +142,7 @@ function Login() {
             type="button"
             onClick={() => handleOAuthLogin("google")}
             disabled={loading}
-            className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors flex items-center justify-center disabled:bg-gray-500">
+            className="w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg transition-colors flex items-center justify-center disabled:bg-gray-400">
             Sign in with Google
           </button>
         </div>

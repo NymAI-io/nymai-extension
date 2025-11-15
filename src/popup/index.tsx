@@ -500,7 +500,7 @@ function IndexPopup() {
       return (
         <div className="flex flex-col items-center justify-center py-12 space-y-4">
           <Spinner size="lg" />
-          <p className="text-gray-400 text-sm">Loading NymAI...</p>
+          <p className="text-gray-600 text-sm">Loading NymAI...</p>
         </div>
       )
     }
@@ -510,8 +510,8 @@ function IndexPopup() {
       return (
         <div className="flex flex-col items-center justify-center py-12 space-y-4">
           <Spinner size="lg" />
-          <p className="text-gray-300 font-medium">Analyzing content...</p>
-          <p className="text-gray-400 text-xs">This may take a few moments</p>
+          <p className="text-gray-800 font-medium">Analyzing content...</p>
+          <p className="text-gray-600 text-xs">This may take a few moments</p>
         </div>
       )
     }
@@ -526,10 +526,10 @@ function IndexPopup() {
       // Special case: 402 error code shows upgrade prompt with distinct styling
       if (errorCode === 402) {
         return (
-          <div className="mt-4 p-5 bg-yellow-900/50 border-2 border-yellow-600 text-yellow-100 rounded-lg space-y-4">
+          <div className="mt-4 p-5 bg-yellow-50 border-2 border-yellow-400 text-yellow-900 rounded-lg space-y-4">
             <div className="text-center">
-              <p className="font-bold text-lg text-yellow-200 mb-2">Insufficient Credits</p>
-              <p className="text-sm text-yellow-300 leading-relaxed">{error}</p>
+              <p className="font-bold text-lg text-yellow-800 mb-2">Insufficient Credits</p>
+              <p className="text-sm text-yellow-700 leading-relaxed">{error}</p>
             </div>
             <div className="space-y-2 pt-2">
               <button
@@ -539,7 +539,7 @@ function IndexPopup() {
               </button>
               <button
                 onClick={handleStartNewScan}
-                className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors">
+                className="w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition-colors">
                 Start New Scan
               </button>
             </div>
@@ -549,11 +549,11 @@ function IndexPopup() {
 
       // Generic error display
       return (
-        <div className="mt-4 p-4 bg-red-900/30 border border-red-700/50 text-red-200 rounded-lg space-y-3">
+        <div className="mt-4 p-4 bg-red-50 border border-red-200 text-red-800 rounded-lg space-y-3">
           <div className="text-sm font-medium">{isActivationError ? error : `Last scan failed: ${error}`}</div>
           <button
             onClick={handleStartNewScan}
-            className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors">
+            className="w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition-colors">
             Start New Scan
           </button>
         </div>
@@ -568,12 +568,12 @@ function IndexPopup() {
       // If neither exists, show a generic message
       if (!hasAuthenticity && !hasCredibility) {
         return (
-          <div className="mt-4 p-3 bg-gray-700 rounded-lg">
-            <p className="text-gray-300">Scan completed, but no analysis data was returned.</p>
-            <div className="mt-4 pt-3 border-t border-gray-600">
+          <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <p className="text-gray-700">Scan completed, but no analysis data was returned.</p>
+            <div className="mt-4 pt-3 border-t border-gray-300">
               <button
                 onClick={handleStartNewScan}
-                className="w-full py-2 bg-gray-600 hover:bg-gray-500 text-white font-semibold rounded-lg transition-colors">
+                className="w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg transition-colors">
                 Start New Scan
               </button>
             </div>
@@ -585,12 +585,12 @@ function IndexPopup() {
       const credRiskScore = scanResult?.credibility?.risk_score ?? 0
 
       return (
-        <div className="mt-4 bg-gray-700/50 rounded-xl border border-gray-600/50 overflow-hidden animate-fade-in shadow-lg">
+        <div className="mt-4 bg-white rounded-xl border border-gray-200 overflow-hidden animate-fade-in shadow-lg">
           {/* Header */}
-          <div className="bg-gradient-to-r from-brand-teal/20 to-brand-tealLight/20 px-5 py-3 border-b border-gray-600/50">
-            <h3 className="text-lg font-bold text-white">Analysis Results</h3>
+          <div className="bg-gradient-to-r from-brand-teal/10 to-brand-tealLight/10 px-5 py-3 border-b border-gray-200">
+            <h3 className="text-lg font-bold text-gray-900">Analysis Results</h3>
             {scanResult?.model_used && (
-              <p className="text-xs text-gray-400 mt-1">Model: {scanResult.model_used}</p>
+              <p className="text-xs text-gray-600 mt-1">Model: {scanResult.model_used}</p>
             )}
           </div>
 
@@ -599,17 +599,17 @@ function IndexPopup() {
             {hasAuthenticity && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-gray-400 uppercase tracking-wide">Authenticity</p>
+                  <p className="text-sm font-medium text-gray-600 uppercase tracking-wide">Authenticity</p>
                   {renderScore(authScore, true)}
                 </div>
-                <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <div className="flex items-baseline space-x-2 mb-2">
                     <span className={`text-4xl font-bold ${getScoreColor(authScore, true)}`}>
                       {authScore}
                     </span>
-                    <span className="text-xl text-gray-400 font-medium">% AI</span>
+                    <span className="text-xl text-gray-600 font-medium">% AI</span>
                   </div>
-                  <p className="text-sm text-gray-300 leading-relaxed mt-2">
+                  <p className="text-sm text-gray-700 leading-relaxed mt-2">
                     {scanResult?.authenticity?.analysis || "No analysis provided."}
                   </p>
                 </div>
@@ -618,38 +618,38 @@ function IndexPopup() {
             
             {/* Credibility Section - Only show if data exists */}
             {hasCredibility && (
-              <div className={`space-y-3 ${hasAuthenticity ? "border-t border-gray-600/50 pt-6" : ""}`}>
+              <div className={`space-y-3 ${hasAuthenticity ? "border-t border-gray-200 pt-6" : ""}`}>
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-gray-400 uppercase tracking-wide">Credibility</p>
+                  <p className="text-sm font-medium text-gray-600 uppercase tracking-wide">Credibility</p>
                   {renderScore(credRiskScore, false)}
                 </div>
-                <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <div className="flex items-baseline space-x-2 mb-2">
                     <span className={`text-4xl font-bold ${getScoreColor(credRiskScore, false)}`}>
                       {credRiskScore}
                     </span>
-                    <span className="text-xl text-gray-400 font-medium">% Risk</span>
+                    <span className="text-xl text-gray-600 font-medium">% Risk</span>
                   </div>
-                  <p className="text-sm text-gray-300 leading-relaxed mt-2">
+                  <p className="text-sm text-gray-700 leading-relaxed mt-2">
                     {scanResult?.credibility?.analysis || "No analysis provided."}
                   </p>
                   
                   {/* Claims Section */}
                   {scanResult?.credibility?.claims?.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-gray-700/50 space-y-3">
-                      <p className="text-sm font-semibold text-gray-300">Claims Found</p>
+                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
+                      <p className="text-sm font-semibold text-gray-800">Claims Found</p>
                       {scanResult.credibility.claims.map((claim: any, index: number) => (
-                        <div key={index} className="bg-gray-900/50 rounded-lg p-3 border-l-4 border-yellow-500/50">
-                          <p className="text-sm text-white font-medium mb-1">{claim.claim}</p>
+                        <div key={index} className="bg-white rounded-lg p-3 border-l-4 border-yellow-400 border border-gray-200">
+                          <p className="text-sm text-gray-900 font-medium mb-1">{claim.claim}</p>
                           <div className="flex items-start space-x-2">
                             <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                              claim.is_true === true ? "bg-green-500/20 text-green-400" :
-                              claim.is_true === false ? "bg-red-500/20 text-red-400" :
-                              "bg-yellow-500/20 text-yellow-400"
+                              claim.is_true === true ? "bg-green-100 text-green-700" :
+                              claim.is_true === false ? "bg-red-100 text-red-700" :
+                              "bg-yellow-100 text-yellow-700"
                             }`}>
                               {claim.is_true === true ? "TRUE" : claim.is_true === false ? "FALSE" : "MISLEADING"}
                             </span>
-                            <p className="text-xs text-gray-400 flex-1">{claim.evidence}</p>
+                            <p className="text-xs text-gray-600 flex-1">{claim.evidence}</p>
                           </div>
                         </div>
                       ))}
@@ -661,10 +661,10 @@ function IndexPopup() {
           </div>
           
           {/* Footer with Start New Scan Button */}
-          <div className="px-5 py-4 bg-gray-800/30 border-t border-gray-600/50">
+          <div className="px-5 py-4 bg-gray-50 border-t border-gray-200">
             <button
               onClick={handleStartNewScan}
-              className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors">
+              className="w-full py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition-colors">
               Start New Scan
             </button>
           </div>
@@ -677,20 +677,20 @@ function IndexPopup() {
       <div className="mt-4 space-y-3">
         {/* Show YouTube video scan button if on YouTube video page */}
         {isYouTubeVideo && (
-          <div className="mb-4 p-5 bg-gray-700/60 rounded-xl border-2 border-gray-600/70 shadow-md">
+          <div className="mb-4 p-5 bg-gray-50 rounded-xl border-2 border-gray-200 shadow-md">
             <button
               onClick={handleScanYouTubeVideo}
               className="w-full py-3 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
               Scan this YouTube Video
             </button>
-            <p className="text-xs text-gray-400 text-center mt-3">
+            <p className="text-xs text-gray-600 text-center mt-3">
               Or use the buttons below to scan other elements
             </p>
           </div>
         )}
         
         {/* Always show the standard scan buttons */}
-        <div className="p-5 bg-gray-700/60 rounded-xl border-2 border-gray-600/70 shadow-md space-y-3">
+        <div className="p-5 bg-gray-50 rounded-xl border-2 border-gray-200 shadow-md space-y-3">
           <button
             onClick={() => activateSelectionMode('credibility')}
             className="w-full py-3 bg-brand-accent hover:bg-brand-accentDark text-white font-semibold rounded-lg transition-colors shadow-lg">
@@ -701,7 +701,7 @@ function IndexPopup() {
             className="w-full py-3 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
             Check Authenticity
           </button>
-          <p className="text-xs text-gray-400 text-center mt-2">
+          <p className="text-xs text-gray-600 text-center mt-2">
             Or right-click on text/images for quick scans
           </p>
         </div>
@@ -711,14 +711,14 @@ function IndexPopup() {
 
   // --- Main Render ---
   return (
-    <div className="w-[380px] min-h-[400px] bg-gradient-to-b from-gray-900 to-gray-800 font-sans text-gray-100">
+    <div className="w-[380px] min-h-[400px] bg-white font-sans text-gray-900">
       {/* Header with Branding */}
-      <div className="bg-gray-800/50 border-b border-gray-700/50 px-5 py-4">
+      <div className="bg-white border-b border-gray-200 px-5 py-4">
         <div className="flex items-center justify-center mb-3 pt-2">
           <img 
-            src={chrome.runtime.getURL('NymAI_icon.svg')} 
+            src={chrome.runtime.getURL('NymAI_full_logo.svg')} 
             alt="NymAI Logo" 
-            className="h-12"
+            className="h-10"
           />
         </div>
         
@@ -726,7 +726,7 @@ function IndexPopup() {
         {!userEmail ? (
           <div className="space-y-2">
             {error && (
-              <div className="mb-2 p-2 bg-red-500/20 border border-red-500/50 rounded text-xs text-red-300">
+              <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
                 {error}
               </div>
             )}
@@ -739,14 +739,14 @@ function IndexPopup() {
         ) : (
           <div className="text-center space-y-2">
             <div className="flex items-center justify-center space-x-2">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-              <p className="text-sm text-gray-300">
-                Logged in as <span className="text-green-400 font-medium">{userEmail}</span>
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <p className="text-sm text-gray-700">
+                Logged in as <span className="text-green-600 font-medium">{userEmail}</span>
               </p>
             </div>
             <button
               onClick={signOut}
-              className="text-xs text-gray-400 hover:text-gray-300 underline transition-colors">
+              className="text-xs text-gray-500 hover:text-gray-700 underline transition-colors">
               Sign Out
             </button>
           </div>
@@ -760,7 +760,7 @@ function IndexPopup() {
           renderBody()
         ) : (
           /* Show message when not logged in */
-          <div className="text-center py-8 text-gray-400 text-sm">
+          <div className="text-center py-8 text-gray-500 text-sm">
             Please log in to use NymAI
           </div>
         )}
