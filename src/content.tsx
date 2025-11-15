@@ -42,6 +42,40 @@ if (document.body) {
   })
 }
 
+// Inject extension ID into pages that match nymai.io (for OAuth flow)
+// This must run immediately, before the page's React code loads
+function injectExtensionId() {
+  if (window.location.hostname === 'www.nymai.io' || window.location.hostname === 'nymai.io' || window.location.hostname === 'localhost') {
+    // Get the extension ID and inject it into the page
+    chrome.runtime.sendMessage({ type: 'GET_EXTENSION_ID' }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.warn('NymAI: Could not get extension ID:', chrome.runtime.lastError.message)
+        return
+      }
+      
+      if (response?.extensionId) {
+        // Inject the extension ID into the page's window object immediately
+        // Use Object.defineProperty to ensure it's set before any page scripts run
+        Object.defineProperty(window, 'NYMAI_EXTENSION_ID', {
+          value: response.extensionId,
+          writable: true,
+          configurable: true
+        })
+        console.log('NymAI: Extension ID injected into page:', response.extensionId)
+      }
+    })
+  }
+}
+
+// Inject immediately if possible, otherwise wait for DOM
+if (document.readyState === 'loading') {
+  // Inject as early as possible
+  injectExtensionId()
+  document.addEventListener('DOMContentLoaded', injectExtensionId)
+} else {
+  injectExtensionId()
+}
+
 // This is a Plasmo-specific feature to get the right-clicked element (for Fast Path)
 // Plasmo uses this to determine where to mount React components for context menu features
 export const getRootContainer = (payload) => {

@@ -123,6 +123,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true })
     return true
   }
+  
+  // Handle extension ID requests from content script
+  if (request.type === 'GET_EXTENSION_ID') {
+    const extensionId = chrome.runtime.id
+    console.log('NymAI: Extension ID requested, returning:', extensionId)
+    sendResponse({ extensionId })
+    return true
+  }
+  
   return false
 })
 
