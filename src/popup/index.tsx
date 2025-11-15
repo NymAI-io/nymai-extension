@@ -714,22 +714,8 @@ function IndexPopup() {
     <div className="w-[380px] min-h-[400px] bg-gradient-to-b from-gray-900 to-gray-800 font-sans text-gray-100">
       {/* Header with Branding */}
       <div className="bg-gray-800/50 border-b border-gray-700/50 px-5 py-4">
-        <div className="flex items-center justify-center space-x-2 mb-3">
-          <div className="w-8 h-8 bg-gradient-to-br from-brand-teal to-brand-tealLight rounded-lg flex items-center justify-center">
-            <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="32" height="32" rx="6" fill="url(#gradient)"/>
-              <defs>
-                <linearGradient id="gradient" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#4fd1c5"/>
-                  <stop offset="100%" stopColor="#81e6d9"/>
-                </linearGradient>
-              </defs>
-              <path d="M8 10 L8 22 M8 10 L20 22 M20 10 L20 22" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-            </svg>
-          </div>
-          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-brand-teal to-brand-tealLight">
-            NymAI
-          </h1>
+        <div className="flex items-center justify-center mb-3 pt-2">
+          <img src="/NymAI_icon.png" alt="NymAI Logo" className="h-12" />
         </div>
         
         {/* User authentication section */}
