@@ -45,13 +45,13 @@ function IndexPopup() {
       console.log('NymAI: Supabase client initialized:', !!supabase)
       
       // Initiate OAuth and get the URL
-      // Note: In extension popups, Supabase may try to redirect the popup itself
-      // We need to explicitly request the URL without redirecting
+      // CRITICAL: skipBrowserRedirect must be true to prevent Supabase from redirecting the popup
+      // This allows us to get the URL and open it in a new tab instead
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: 'https://www.nymai.io',
-          skipBrowserRedirect: false // This ensures we get the URL
+          skipBrowserRedirect: true // Prevents popup redirect, returns URL instead
         }
       })
       
