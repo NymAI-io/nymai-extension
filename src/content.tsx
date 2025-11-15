@@ -6,26 +6,63 @@ export const config: PlasmoCSConfig = {
   all_frames: false // Only run in the main frame to avoid conflicts
 }
 
+// Create a hidden container element for Plasmo to mount React components
+// This prevents the createRoot error when Plasmo tries to mount the default export
+let hiddenContainer: HTMLElement | null = null
+
+function getOrCreateHiddenContainer(): HTMLElement {
+  if (!hiddenContainer) {
+    hiddenContainer = document.createElement('div')
+    hiddenContainer.id = 'nymai-plasmo-root'
+    hiddenContainer.style.cssText = 'display: none !important; position: absolute; left: -9999px; width: 0; height: 0; overflow: hidden;'
+    
+    // Ensure document.body exists before appending
+    if (document.body) {
+      document.body.appendChild(hiddenContainer)
+    } else {
+      // If body doesn't exist yet, wait for DOMContentLoaded
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+          if (hiddenContainer && !hiddenContainer.parentNode) {
+            document.body.appendChild(hiddenContainer)
+          }
+        })
+      }
+    }
+  }
+  return hiddenContainer
+}
+
+// Initialize hidden container immediately if body is available
+if (document.body) {
+  getOrCreateHiddenContainer()
+} else if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    getOrCreateHiddenContainer()
+  })
+}
+
 // This is a Plasmo-specific feature to get the right-clicked element (for Fast Path)
 // Plasmo uses this to determine where to mount React components for context menu features
-// IMPORTANT: Must return a valid DOM element or null - returning null prevents React mounting
 export const getRootContainer = (payload) => {
-  // Safety check: if no payload or targetElementId, return null to prevent React mounting
+  // If no payload or targetElementId, return hidden container to prevent createRoot error
+  // Plasmo will mount React to this hidden container, but our component returns null so nothing renders
   if (!payload || !payload.targetElementId) {
-    return null
+    return getOrCreateHiddenContainer()
   }
   
   // Try to find the target element
   const element = document.getElementById(payload.targetElementId)
   
-  // If element doesn't exist, return null to prevent Plasmo from calling createRoot(null)
-  // This prevents the "Target container is not a DOM element" error
-  if (!element) {
-    console.warn('NymAI: getRootContainer - target element not found:', payload.targetElementId)
-    return null
+  // If element exists, return it for context menu mounting
+  if (element) {
+    return element
   }
   
-  return element
+  // If element doesn't exist, return hidden container instead of null
+  // This prevents Plasmo from calling createRoot(null) which causes the error
+  console.warn('NymAI: getRootContainer - target element not found, using hidden container:', payload.targetElementId)
+  return getOrCreateHiddenContainer()
 }
 
 // State for Interactive Selection Mode
