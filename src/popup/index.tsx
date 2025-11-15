@@ -26,6 +26,8 @@ function IndexPopup() {
   // This function initiates OAuth login by opening a tab with Supabase OAuth URL
   const openLoginPage = async () => {
     try {
+      console.log('NymAI: Initiating OAuth login...')
+      
       // Initiate OAuth and get the URL
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -35,26 +37,53 @@ function IndexPopup() {
       })
       
       if (error) {
-        console.error('OAuth initiation error:', error)
+        console.error('NymAI: OAuth initiation error:', error)
         setError('Failed to initiate login. Please try again.')
         return
       }
       
-      if (data?.url) {
-        // Open the OAuth URL in a new tab and track it
+      if (!data?.url) {
+        console.error('NymAI: OAuth returned no URL')
+        setError('Failed to get login URL. Please try again.')
+        return
+      }
+      
+      console.log('NymAI: OAuth URL received, opening tab...')
+      
+      // Open the OAuth URL in a new tab and track it
+      // Wrap chrome.tabs.create in a Promise for proper async/await handling
+      const tab = await new Promise<chrome.tabs.Tab>((resolve, reject) => {
         chrome.tabs.create({ url: data.url }, (tab) => {
-          if (tab?.id) {
-            // Send message to background script to track this login tab
-            chrome.runtime.sendMessage({
-              type: 'TRACK_LOGIN_TAB',
-              tabId: tab.id
-            })
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message))
+          } else if (tab) {
+            resolve(tab)
+          } else {
+            reject(new Error('Failed to create tab'))
           }
         })
+      })
+      
+      if (tab?.id) {
+        console.log('NymAI: Tab created with ID:', tab.id)
+        // Send message to background script to track this login tab
+        chrome.runtime.sendMessage({
+          type: 'TRACK_LOGIN_TAB',
+          tabId: tab.id
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('NymAI: Error sending TRACK_LOGIN_TAB message:', chrome.runtime.lastError)
+          } else {
+            console.log('NymAI: Login tab tracking message sent successfully')
+          }
+        })
+      } else {
+        console.error('NymAI: Tab created but has no ID')
+        setError('Failed to track login tab. Please try again.')
       }
-    } catch (err) {
-      console.error('Error initiating OAuth:', err)
-      setError('Failed to initiate login. Please try again.')
+    } catch (err: any) {
+      console.error('NymAI: Error initiating OAuth:', err)
+      setError(err?.message || 'Failed to initiate login. Please try again.')
     }
   }
 
