@@ -610,19 +610,21 @@ function IndexPopup() {
         )}
         
         {/* Always show the standard scan buttons */}
-        <button
-          onClick={() => activateSelectionMode('credibility')}
-          className="w-full py-3 bg-brand-accent hover:bg-brand-accentDark text-white font-semibold rounded-lg transition-colors shadow-lg">
-          Check Credibility
-        </button>
-        <button
-          onClick={() => activateSelectionMode('authenticity')}
-          className="w-full py-3 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
-          Check Authenticity
-        </button>
-        <p className="text-xs text-gray-400 text-center mt-3 px-2">
-          Or right-click on text/images for quick scans
-        </p>
+        <div className="p-5 bg-gray-700/60 rounded-xl border-2 border-gray-600/70 shadow-md space-y-3">
+          <button
+            onClick={() => activateSelectionMode('credibility')}
+            className="w-full py-3 bg-brand-accent hover:bg-brand-accentDark text-white font-semibold rounded-lg transition-colors shadow-lg">
+            Check Credibility
+          </button>
+          <button
+            onClick={() => activateSelectionMode('authenticity')}
+            className="w-full py-3 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
+            Check Authenticity
+          </button>
+          <p className="text-xs text-gray-400 text-center mt-2">
+            Or right-click on text/images for quick scans
+          </p>
+        </div>
       </div>
     )
   }
