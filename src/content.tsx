@@ -7,8 +7,25 @@ export const config: PlasmoCSConfig = {
 }
 
 // This is a Plasmo-specific feature to get the right-clicked element (for Fast Path)
+// Plasmo uses this to determine where to mount React components for context menu features
+// IMPORTANT: Must return a valid DOM element or null - returning null prevents React mounting
 export const getRootContainer = (payload) => {
-  return document.getElementById(payload.targetElementId)
+  // Safety check: if no payload or targetElementId, return null to prevent React mounting
+  if (!payload || !payload.targetElementId) {
+    return null
+  }
+  
+  // Try to find the target element
+  const element = document.getElementById(payload.targetElementId)
+  
+  // If element doesn't exist, return null to prevent Plasmo from calling createRoot(null)
+  // This prevents the "Target container is not a DOM element" error
+  if (!element) {
+    console.warn('NymAI: getRootContainer - target element not found:', payload.targetElementId)
+    return null
+  }
+  
+  return element
 }
 
 // State for Interactive Selection Mode
@@ -458,4 +475,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return false
 })
 
-export default () => null
+// Export null component - Plasmo will try to mount this but getRootContainer handles missing elements
+// If getRootContainer returns null, Plasmo should skip mounting, but we add extra safety here
+export default () => {
+  // This component should never actually render since getRootContainer returns null
+  // when there's no valid target element
+  return null
+}
