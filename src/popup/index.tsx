@@ -200,10 +200,32 @@ function IndexPopup() {
       })
       clearTimeout(timeout)
 
-      const data = await response.json()
+      const rawBody = await response.text()
+      const contentType = response.headers.get("content-type") ?? ""
+      
+      let data: any
+      if (contentType.includes("application/json")) {
+        try {
+          data = JSON.parse(rawBody)
+        } catch (parseError) {
+          throw new Error(`Backend returned invalid JSON (status ${response.status})`)
+        }
+      } else {
+        const snippet = rawBody ? rawBody.slice(0, 200) : "(empty response)"
+        throw new Error(`Backend returned non-JSON response (status ${response.status}): ${snippet}`)
+      }
+
+      // Handle 402 error specifically (insufficient credits)
+      if (response.status === 402) {
+        setError(data.detail || "Insufficient credits to perform this scan.")
+        setErrorCode(402)
+        await storageArea.set({
+          lastScanResult: { error: data.detail || "Insufficient credits to perform this scan.", error_code: 402 }
+        })
+        return
+      }
 
       if (!response.ok) {
-        // The storage listener will pick up the error, but we can throw here too
         throw new Error(data.detail || `Request failed with status ${response.status}`)
       }
 
@@ -212,8 +234,17 @@ function IndexPopup() {
     } catch (e: any) {
       if (e?.name === "AbortError") {
         setError("Scan failed: request timed out.")
+        setErrorCode(500)
+        await storageArea.set({
+          lastScanResult: { error: "Scan failed: request timed out.", error_code: 500 }
+        })
       } else {
-        setError("Scan failed: please try again.")
+        const errorMessage = e?.message || "Scan failed: please try again."
+        setError(errorMessage)
+        setErrorCode(500)
+        await storageArea.set({
+          lastScanResult: { error: errorMessage, error_code: 500 }
+        })
       }
     } finally {
       setIsScanning(false)
