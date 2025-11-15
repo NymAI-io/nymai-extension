@@ -80,11 +80,25 @@ function Login() {
   }
 
   return (
-    <div className="w-full h-screen p-8 bg-gray-900 flex justify-center items-start font-sans">
+    <div className="w-full h-screen p-8 bg-gradient-to-b from-gray-900 to-gray-800 flex justify-center items-start font-sans">
       <div className="w-full max-w-md">
-        <h1 className="text-3xl font-black text-center mb-6 text-purple-400">
-          NymAI
-        </h1>
+        <div className="flex items-center justify-center space-x-2 mb-8">
+          <div className="w-10 h-10 bg-gradient-to-br from-brand-teal to-brand-tealLight rounded-lg flex items-center justify-center">
+            <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="32" height="32" rx="6" fill="url(#gradient)"/>
+              <defs>
+                <linearGradient id="gradient" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#4fd1c5"/>
+                  <stop offset="100%" stopColor="#81e6d9"/>
+                </linearGradient>
+              </defs>
+              <path d="M8 10 L8 22 M8 10 L20 22 M20 10 L20 22" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            </svg>
+          </div>
+          <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-brand-teal to-brand-tealLight">
+            NymAI
+          </h1>
+        </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <input
@@ -92,7 +106,7 @@ function Login() {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-brand-teal"
             required
           />
           <input
@@ -100,7 +114,7 @@ function Login() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-brand-teal"
             required
           />
 
@@ -111,14 +125,14 @@ function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-500">
+              className="flex-1 py-2 bg-brand-teal hover:bg-brand-tealLight text-brand-dark font-semibold rounded-lg transition-colors disabled:bg-gray-500 disabled:text-white shadow-lg shadow-brand-teal/20">
               {loading ? "Loading..." : "Log In"}
             </button>
             <button
               type="button"
               onClick={handleSignUp}
               disabled={loading}
-              className="flex-1 py-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-500">
+              className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-500">
               {loading ? "Loading..." : "Sign Up"}
             </button>
           </div>
