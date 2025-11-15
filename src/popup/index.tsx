@@ -507,7 +507,7 @@ function IndexPopup() {
       return (
         <div className="mt-4 bg-gray-700/50 rounded-xl border border-gray-600/50 overflow-hidden animate-fade-in shadow-lg">
           {/* Header */}
-          <div className="bg-gradient-to-r from-brand-primary/20 to-brand-accent/20 px-5 py-3 border-b border-gray-600/50">
+          <div className="bg-gradient-to-r from-brand-teal/20 to-brand-tealLight/20 px-5 py-3 border-b border-gray-600/50">
             <h3 className="text-lg font-bold text-white">Analysis Results</h3>
             {scanResult?.model_used && (
               <p className="text-xs text-gray-400 mt-1">Model: {scanResult.model_used}</p>
@@ -635,10 +635,19 @@ function IndexPopup() {
       {/* Header with Branding */}
       <div className="bg-gray-800/50 border-b border-gray-700/50 px-5 py-4">
         <div className="flex items-center justify-center space-x-2 mb-3">
-          <div className="w-8 h-8 bg-gradient-to-br from-brand-primary to-brand-accent rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-lg">N</span>
+          <div className="w-8 h-8 bg-gradient-to-br from-brand-teal to-brand-tealLight rounded-lg flex items-center justify-center">
+            <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="32" height="32" rx="6" fill="url(#gradient)"/>
+              <defs>
+                <linearGradient id="gradient" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#4fd1c5"/>
+                  <stop offset="100%" stopColor="#81e6d9"/>
+                </linearGradient>
+              </defs>
+              <path d="M8 10 L8 22 M8 10 L20 22 M20 10 L20 22" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            </svg>
           </div>
-          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-brand-primary to-brand-accent">
+          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-brand-teal to-brand-tealLight">
             NymAI
           </h1>
         </div>

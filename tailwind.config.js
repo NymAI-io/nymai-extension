@@ -9,11 +9,15 @@ module.exports = {
     extend: {
       colors: {
         brand: {
-          primary: "#8b5cf6", // Purple-600
-          primaryDark: "#7c3aed", // Purple-700
-          primaryLight: "#a78bfa", // Purple-400
-          accent: "#3b82f6", // Blue-600
-          accentDark: "#2563eb", // Blue-700
+          dark: "#2d3748", // Dark charcoal
+          teal: "#4fd1c5", // Primary teal
+          tealLight: "#81e6d9", // Light teal
+          // Legacy aliases for gradual migration
+          primary: "#4fd1c5", // Teal (replaces purple)
+          primaryDark: "#2d3748", // Dark (replaces purple-dark)
+          primaryLight: "#81e6d9", // Light teal (replaces purple-light)
+          accent: "#4fd1c5", // Teal (replaces blue)
+          accentDark: "#2d3748", // Dark (replaces blue-dark)
         },
       },
       // Add this animation code

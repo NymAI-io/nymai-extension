@@ -137,6 +137,11 @@ async function runFullScan(
     return
   }
 
+  // Set badge and scanning state early to provide immediate feedback
+  chrome.action.setBadgeText({ text: '...' })
+  chrome.action.setBadgeBackgroundColor({ color: '#4fd1c5' })
+  await storageArea.set({ isScanning: true })
+
   lastScanTimestamp = now
 
   const normalizedScanType =
@@ -151,8 +156,11 @@ async function runFullScan(
   const session = storageData.nymAiSession
   if (!session || !session.access_token) {
     console.error("NymAI Error: No user session found. Please log in.")
-    storageArea.set({
-      lastScanResult: { error: "You must be logged in to scan." }
+    // Clear badge and scanning state before returning
+    chrome.action.setBadgeText({ text: '' })
+    await storageArea.set({ 
+      lastScanResult: { error: "You must be logged in to scan." },
+      isScanning: false 
     })
     return // Stop the scan
   }
@@ -207,6 +215,7 @@ async function runFullScan(
         storageArea.set({ 
             lastScanResult: { error: data.detail, error_code: 402 } 
         });
+        // Badge will be cleared in finally block
         return; // Stop here
     }
     // --- END NEW LOGIC ---
@@ -225,5 +234,9 @@ async function runFullScan(
         ? "The request timed out. Please try again."
         : "Scan failed due to an unexpected error. Please try again."
     storageArea.set({ lastScanResult: { error: message, error_code: 500 } })
+  } finally {
+    // Clear badge and scanning state in all cases (success or failure)
+    chrome.action.setBadgeText({ text: '' })
+    await storageArea.set({ isScanning: false })
   }
 }
