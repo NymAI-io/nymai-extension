@@ -160,16 +160,28 @@ chrome.runtime.onMessageExternal.addListener(
         await storageArea.set({ nymAiSession: message.session })
         
         console.log('NymAI: Session saved successfully from landing page')
+        console.log('NymAI: Current loginTabId:', loginTabId)
+        console.log('NymAI: Sender tab ID:', sender.tab?.id)
         
         // Broadcast login completion to any open popups so they can refresh their UI
         chrome.runtime.sendMessage({ type: 'NYMAI_LOGIN_COMPLETE' })
         
         // Close the login tab immediately and reliably
-        if (loginTabId !== null) {
-          chrome.tabs.remove(loginTabId, () => {
-            console.log('NymAI: Login tab closed after successful authentication')
+        // Use tracked loginTabId if available, otherwise fall back to sender tab ID
+        const tabIdToClose = loginTabId !== null ? loginTabId : sender.tab?.id
+        
+        if (tabIdToClose) {
+          console.log('NymAI: Closing tab with ID:', tabIdToClose)
+          chrome.tabs.remove(tabIdToClose, (error) => {
+            if (error) {
+              console.error('NymAI: Error closing tab:', error)
+            } else {
+              console.log('NymAI: Login tab closed after successful authentication')
+            }
           })
           loginTabId = null // Reset tracking
+        } else {
+          console.warn('NymAI: No tab ID available to close. loginTabId:', loginTabId, 'sender.tab.id:', sender.tab?.id)
         }
         
         sendResponse({ success: true })
