@@ -193,6 +193,47 @@ function handleScroll() {
   updateHighlighterPosition(highlightedElement)
 }
 
+// Validate selection for mixed content (images + text)
+function validateSelection(element: HTMLElement): { isValid: boolean; error?: string } {
+  // Check if there's a text selection
+  const selection = window.getSelection()
+  const selectedText = selection ? selection.toString().trim() : ''
+  const hasSignificantText = selectedText.length > 10
+
+  // Check if the selection contains any images
+  let imageCount = 0
+  if (selection && selection.rangeCount > 0) {
+    const range = selection.getRangeAt(0)
+    const container = range.commonAncestorContainer
+    
+    // Create a temporary container to check for images in the selection
+    const tempDiv = document.createElement('div')
+    tempDiv.appendChild(range.cloneContents())
+    imageCount = tempDiv.querySelectorAll('img').length
+  }
+
+  // Also check if the clicked element itself is an image
+  if (element.tagName === 'IMG') {
+    imageCount++
+  }
+
+  // Check if the element contains images
+  const elementImages = element.querySelectorAll('img')
+  if (elementImages.length > 0) {
+    imageCount += elementImages.length
+  }
+
+  // Block if both images and significant text are present
+  if (imageCount > 0 && hasSignificantText) {
+    return {
+      isValid: false,
+      error: "Mixed content is not supported. Please select only text or a single image."
+    }
+  }
+
+  return { isValid: true }
+}
+
 // Handle element click - capture the selected element and initiate scan
 function handleElementClick(event: MouseEvent) {
   if (!isSelectionModeActive || !currentScanType) return
@@ -213,6 +254,20 @@ function handleElementClick(event: MouseEvent) {
       element.id === 'nymai-highlighter' ||
       element.closest('#nymai-selection-overlay') ||
       element.closest('#nymai-highlighter')) {
+    return
+  }
+
+  // Pre-flight check: Validate selection for mixed content
+  const validation = validateSelection(element)
+  if (!validation.isValid) {
+    deactivateSelectionMode()
+    // Save error to storage so popup can display it
+    chrome.storage.local.set({
+      lastScanResult: {
+        error: validation.error || "Mixed content is not supported. Please select only text or a single image.",
+        error_code: 400
+      }
+    })
     return
   }
 

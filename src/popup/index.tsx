@@ -226,9 +226,11 @@ function IndexPopup() {
     setScanResult(null)
     setError("")
     setErrorCode(null)
+    setIsScanning(false)
     
     // Clear persisted state in chrome.storage.local
     await storageArea.remove("lastScanResult")
+    await storageArea.set({ isScanning: false })
   }
 
   // --- Data Fetching: Load scan results from chrome.storage.local ---
@@ -256,6 +258,12 @@ function IndexPopup() {
             setUserEmail(null)
             await storageArea.remove("nymAiSession")
           }
+        }
+
+        // Check if a scan is in progress
+        const scanningData = await storageArea.get("isScanning")
+        if (scanningData.isScanning === true) {
+          setIsScanning(true)
         }
 
         // Load the last scan result from storage
@@ -305,6 +313,12 @@ function IndexPopup() {
 
     // Set up the storage listener for real-time updates
     const storageListener = (changes: any) => {
+      // Listen for isScanning changes
+      if (changes.isScanning) {
+        setIsScanning(changes.isScanning.newValue === true)
+      }
+
+      // Listen for scan result changes
       if (changes.lastScanResult) {
         const newData = changes.lastScanResult.newValue
         setIsScanning(false) // Stop loading indicator when result arrives
@@ -398,17 +412,19 @@ function IndexPopup() {
                                  error.includes("not available on this page") ||
                                  error.includes("reload the page")
 
-      // Special case: 402 error code shows upgrade prompt
+      // Special case: 402 error code shows upgrade prompt with distinct styling
       if (errorCode === 402) {
         return (
-          <div className="mt-4 p-5 bg-yellow-900/50 border border-yellow-700 text-yellow-200 rounded-lg text-center space-y-3">
-            <p className="font-semibold text-base">{error}</p>
-            <p className="text-sm text-yellow-300">Upgrade to Pro for more scans.</p>
+          <div className="mt-4 p-5 bg-yellow-900/50 border-2 border-yellow-600 text-yellow-100 rounded-lg space-y-4">
+            <div className="text-center">
+              <p className="font-bold text-lg text-yellow-200 mb-2">Insufficient Credits</p>
+              <p className="text-sm text-yellow-300 leading-relaxed">{error}</p>
+            </div>
             <div className="space-y-2 pt-2">
               <button
                 onClick={handleUpgrade}
                 className="w-full py-2.5 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
-                Upgrade to Pro
+                Upgrade Credits
               </button>
               <button
                 onClick={handleStartNewScan}
