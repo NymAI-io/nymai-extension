@@ -44,26 +44,25 @@ if (document.body) {
 
 // Inject extension ID into pages that match nymai.io (for OAuth flow)
 // This must run immediately, before the page's React code loads
+// Use chrome.runtime.id directly (available in content scripts) for synchronous injection
 function injectExtensionId() {
   if (window.location.hostname === 'www.nymai.io' || window.location.hostname === 'nymai.io' || window.location.hostname === 'localhost') {
-    // Get the extension ID and inject it into the page
-    chrome.runtime.sendMessage({ type: 'GET_EXTENSION_ID' }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.warn('NymAI: Could not get extension ID:', chrome.runtime.lastError.message)
-        return
-      }
-      
-      if (response?.extensionId) {
+    try {
+      // chrome.runtime.id is available synchronously in content scripts
+      const extensionId = chrome.runtime.id
+      if (extensionId) {
         // Inject the extension ID into the page's window object immediately
         // Use Object.defineProperty to ensure it's set before any page scripts run
         Object.defineProperty(window, 'NYMAI_EXTENSION_ID', {
-          value: response.extensionId,
+          value: extensionId,
           writable: true,
           configurable: true
         })
-        console.log('NymAI: Extension ID injected into page:', response.extensionId)
+        console.log('NymAI: Extension ID injected into page:', extensionId)
       }
-    })
+    } catch (error) {
+      console.warn('NymAI: Could not inject extension ID:', error)
+    }
   }
 }
 

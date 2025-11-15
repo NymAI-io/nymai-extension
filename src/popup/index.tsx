@@ -3,6 +3,7 @@ import "../style.css"
 import React, { useState, useEffect } from "react"
 import { createClient } from "@supabase/supabase-js"
 import Spinner from "../components/Spinner"
+import LoginForm from "../components/LoginForm"
 
 // --- CONFIGURE YOUR KEYS (from your .env file) ---
 const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL as string
@@ -22,107 +23,43 @@ function IndexPopup() {
   const [errorCode, setErrorCode] = useState<number | null>(null)
   const [currentUrl, setCurrentUrl] = useState<string | null>(null)
   const [isYouTubeVideo, setIsYouTubeVideo] = useState(false)
+  const [showLoginForm, setShowLoginForm] = useState(false) // Show/hide login form
 
-  // This function initiates OAuth login by opening a tab with Supabase OAuth URL
-  const openLoginPage = async () => {
-    // Clear any previous errors
-    setError('')
-    
-    // Validate Supabase configuration before proceeding
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      const missing = []
-      if (!SUPABASE_URL) missing.push('SUPABASE_URL')
-      if (!SUPABASE_ANON_KEY) missing.push('SUPABASE_ANON_KEY')
-      const errorMsg = `Missing environment variables: ${missing.join(', ')}. Please check your .env file.`
-      console.error('NymAI:', errorMsg)
-      setError(errorMsg)
-      return
-    }
-    
+  // This function shows the login form instead of directly calling OAuth
+  const openLoginPage = () => {
+    setShowLoginForm(true)
+    setError('') // Clear any previous errors
+  }
+
+  // Handle successful login from LoginForm
+  const handleLoginSuccess = async () => {
+    setShowLoginForm(false)
+    // Refresh user data
     try {
-      console.log('NymAI: Initiating OAuth login...')
-      console.log('NymAI: Supabase URL:', SUPABASE_URL)
-      console.log('NymAI: Supabase client initialized:', !!supabase)
-      
-      // Initiate OAuth and get the URL
-      // CRITICAL: skipBrowserRedirect must be true to prevent Supabase from redirecting the popup
-      // This allows us to get the URL and open it in a new tab instead
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: 'https://www.nymai.io',
-          skipBrowserRedirect: true // Prevents popup redirect, returns URL instead
-        }
-      })
-      
-      console.log('NymAI: OAuth response:', { data, error })
-      
-      if (error) {
-        console.error('NymAI: OAuth initiation error:', error)
-        setError(`Login failed: ${error.message || 'Please try again.'}`)
-        return
-      }
-      
-      // Check if Supabase redirected the popup (data will be null/undefined)
-      // In that case, we need to handle it differently
-      if (!data) {
-        console.warn('NymAI: OAuth returned no data - popup may have been redirected')
-        setError('OAuth redirect detected. If no tab opened, please try again.')
-        return
-      }
-      
-      if (!data.url) {
-        console.error('NymAI: OAuth returned no URL. Data:', data)
-        setError('Failed to get login URL. Please check console for details.')
-        return
-      }
-      
-      console.log('NymAI: OAuth URL received:', data.url)
-      console.log('NymAI: Opening tab...')
-      
-      // Open the OAuth URL in a new tab and track it
-      // Wrap chrome.tabs.create in a Promise for proper async/await handling
-      const tab = await new Promise<chrome.tabs.Tab>((resolve, reject) => {
-        chrome.tabs.create({ url: data.url }, (tab) => {
-          if (chrome.runtime.lastError) {
-            const errorMsg = chrome.runtime.lastError.message
-            console.error('NymAI: chrome.tabs.create error:', errorMsg)
-            reject(new Error(errorMsg))
-          } else if (tab) {
-            resolve(tab)
-          } else {
-            reject(new Error('Failed to create tab: no tab object returned'))
-          }
-        })
-      })
-      
-      console.log('NymAI: Tab created:', tab)
-      
-      if (tab?.id) {
-        console.log('NymAI: Tab created with ID:', tab.id)
-        // Send message to background script to track this login tab
-        chrome.runtime.sendMessage({
-          type: 'TRACK_LOGIN_TAB',
-          tabId: tab.id
-        }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error('NymAI: Error sending TRACK_LOGIN_TAB message:', chrome.runtime.lastError)
-            // Don't set error here - tab was created successfully, tracking is just a bonus
-          } else {
-            console.log('NymAI: Login tab tracking message sent successfully')
-          }
-        })
+      const {
+        data: { user },
+        error: userError
+      } = await supabase.auth.getUser()
+
+      if (userError || !user) {
+        setUserEmail(null)
+        await storageArea.remove("nymAiSession")
       } else {
-        console.error('NymAI: Tab created but has no ID')
-        setError('Tab opened but could not be tracked. Login should still work.')
+        const {
+          data: { session }
+        } = await supabase.auth.getSession()
+        if (session) {
+          await storageArea.set({ nymAiSession: session })
+          setUserEmail(user.email || null)
+        } else {
+          setUserEmail(null)
+        }
       }
-    } catch (err: any) {
-      console.error('NymAI: Error initiating OAuth:', err)
-      const errorMessage = err?.message || err?.toString() || 'Unknown error occurred'
-      console.error('NymAI: Full error details:', err)
-      setError(`Login failed: ${errorMessage}`)
+    } catch (err) {
+      console.error('NymAI: Error refreshing user data after login:', err)
     }
   }
+
 
   // --- Sign out function ---
   const signOut = async () => {
@@ -486,6 +423,8 @@ function IndexPopup() {
     const messageListener = (message: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
       if (message.type === 'NYMAI_LOGIN_COMPLETE') {
         console.log('NymAI: Received login complete message, refreshing popup state')
+        // Close login form if it's open
+        setShowLoginForm(false)
         // Re-run the data loading function to refresh the UI with new login state
         async function refreshPopupData() {
           try {
@@ -828,8 +767,34 @@ function IndexPopup() {
 
       {/* Main Content Area */}
       <div className="p-5">
-        {/* Hybrid body: Results > Errors > Mission Control */}
-        {userEmail && renderBody()}
+        {/* Show login form if user clicked "Log In / Sign Up" */}
+        {showLoginForm && !userEmail ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-200">Log In / Sign Up</h2>
+              <button
+                onClick={() => {
+                  setShowLoginForm(false)
+                  setError('')
+                }}
+                className="text-gray-400 hover:text-gray-200 text-sm">
+                ✕
+              </button>
+            </div>
+            <LoginForm
+              onLoginSuccess={handleLoginSuccess}
+              onError={setError}
+            />
+          </div>
+        ) : userEmail ? (
+          /* Hybrid body: Results > Errors > Mission Control */
+          renderBody()
+        ) : (
+          /* Show message when not logged in and login form is hidden */
+          <div className="text-center py-8 text-gray-400 text-sm">
+            Please log in to use NymAI
+          </div>
+        )}
       </div>
     </div>
   )
