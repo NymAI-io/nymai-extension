@@ -138,6 +138,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // 5. Listen for external messages from the landing page (OAuth flow)
 chrome.runtime.onMessageExternal.addListener(
   async (message, sender, sendResponse) => {
+    // ENTRY LOG: This proves the listener is firing at all
+    console.log('NymAI: External message received from sender:', sender.url)
+    console.log('NymAI: Message type:', message?.type)
+    console.log('NymAI: Full message object:', message)
+    console.log('NymAI: Sender tab ID:', sender.tab?.id)
+    
     // Verify the sender is from our trusted domain
     if (!sender.url || (!sender.url.startsWith('https://www.nymai.io') && !sender.url.startsWith('https://nymai.io') && !sender.url.startsWith('http://localhost'))) {
       console.warn('NymAI: Rejected message from untrusted source:', sender.url)
@@ -153,19 +159,30 @@ chrome.runtime.onMessageExternal.addListener(
 
     // Handle authentication success messages
     if (message.type === 'NYMAI_AUTH_SUCCESS' && message.session) {
+      console.log('NymAI: NYMAI_AUTH_SUCCESS message handler entered')
+      console.log('NymAI: Session object received:', message.session)
+      console.log('NymAI: Session access_token present:', !!message.session?.access_token)
+      console.log('NymAI: Session refresh_token present:', !!message.session?.refresh_token)
+      
       try {
-        console.log('NymAI: Received auth session from landing page')
+        console.log('NymAI: Attempting to set session in Supabase...')
         
         // Set the session in Supabase client
         const { data, error } = await supabase.auth.setSession(message.session)
         
         if (error) {
           console.error('NymAI: Failed to set session:', error)
+          console.error('NymAI: Error code:', error.status)
+          console.error('NymAI: Error message:', error.message)
           sendResponse({ success: false, error: error.message })
           return false
         }
 
+        console.log('NymAI: Session set successfully in Supabase')
+        console.log('NymAI: Supabase user:', data?.user?.email)
+
         // Save session to storage (same as popup does)
+        console.log('NymAI: Saving session to storage...')
         await storageArea.set({ nymAiSession: message.session })
         
         console.log('NymAI: Session saved successfully from landing page')
@@ -173,7 +190,14 @@ chrome.runtime.onMessageExternal.addListener(
         console.log('NymAI: Sender tab ID:', sender.tab?.id)
         
         // Broadcast login completion to any open popups so they can refresh their UI
-        chrome.runtime.sendMessage({ type: 'NYMAI_LOGIN_COMPLETE' })
+        console.log('NymAI: Broadcasting NYMAI_LOGIN_COMPLETE to popups...')
+        chrome.runtime.sendMessage({ type: 'NYMAI_LOGIN_COMPLETE' }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn('NymAI: Error broadcasting login complete:', chrome.runtime.lastError)
+          } else {
+            console.log('NymAI: Login complete message broadcasted successfully')
+          }
+        })
         
         // Close the login tab immediately and reliably
         // Use tracked loginTabId if available, otherwise fall back to sender tab ID
@@ -193,13 +217,22 @@ chrome.runtime.onMessageExternal.addListener(
           console.warn('NymAI: No tab ID available to close. loginTabId:', loginTabId, 'sender.tab.id:', sender.tab?.id)
         }
         
+        console.log('NymAI: Sending success response to landing page')
         sendResponse({ success: true })
         return true
       } catch (error: any) {
         console.error('NymAI: Error processing auth session:', error)
+        console.error('NymAI: Error name:', error?.name)
+        console.error('NymAI: Error message:', error?.message)
+        console.error('NymAI: Error stack:', error?.stack)
         sendResponse({ success: false, error: error?.message || 'Unknown error' })
         return false
       }
+    }
+    
+    // Log if message type doesn't match
+    if (message.type !== 'PING' && message.type !== 'NYMAI_AUTH_SUCCESS') {
+      console.warn('NymAI: Unknown message type received:', message.type)
     }
 
     // Unknown message type
