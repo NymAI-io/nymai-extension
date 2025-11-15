@@ -25,44 +25,78 @@ function IndexPopup() {
 
   // This function initiates OAuth login by opening a tab with Supabase OAuth URL
   const openLoginPage = async () => {
+    // Clear any previous errors
+    setError('')
+    
+    // Validate Supabase configuration before proceeding
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      const missing = []
+      if (!SUPABASE_URL) missing.push('SUPABASE_URL')
+      if (!SUPABASE_ANON_KEY) missing.push('SUPABASE_ANON_KEY')
+      const errorMsg = `Missing environment variables: ${missing.join(', ')}. Please check your .env file.`
+      console.error('NymAI:', errorMsg)
+      setError(errorMsg)
+      return
+    }
+    
     try {
       console.log('NymAI: Initiating OAuth login...')
+      console.log('NymAI: Supabase URL:', SUPABASE_URL)
+      console.log('NymAI: Supabase client initialized:', !!supabase)
       
       // Initiate OAuth and get the URL
+      // Note: In extension popups, Supabase may try to redirect the popup itself
+      // We need to explicitly request the URL without redirecting
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'https://www.nymai.io'
+          redirectTo: 'https://www.nymai.io',
+          skipBrowserRedirect: false // This ensures we get the URL
         }
       })
       
+      console.log('NymAI: OAuth response:', { data, error })
+      
       if (error) {
         console.error('NymAI: OAuth initiation error:', error)
-        setError('Failed to initiate login. Please try again.')
+        setError(`Login failed: ${error.message || 'Please try again.'}`)
         return
       }
       
-      if (!data?.url) {
-        console.error('NymAI: OAuth returned no URL')
-        setError('Failed to get login URL. Please try again.')
+      // Check if Supabase redirected the popup (data will be null/undefined)
+      // In that case, we need to handle it differently
+      if (!data) {
+        console.warn('NymAI: OAuth returned no data - popup may have been redirected')
+        setError('OAuth redirect detected. If no tab opened, please try again.')
         return
       }
       
-      console.log('NymAI: OAuth URL received, opening tab...')
+      if (!data.url) {
+        console.error('NymAI: OAuth returned no URL. Data:', data)
+        setError('Failed to get login URL. Please check console for details.')
+        return
+      }
+      
+      console.log('NymAI: OAuth URL received:', data.url)
+      console.log('NymAI: Opening tab...')
       
       // Open the OAuth URL in a new tab and track it
       // Wrap chrome.tabs.create in a Promise for proper async/await handling
       const tab = await new Promise<chrome.tabs.Tab>((resolve, reject) => {
         chrome.tabs.create({ url: data.url }, (tab) => {
           if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message))
+            const errorMsg = chrome.runtime.lastError.message
+            console.error('NymAI: chrome.tabs.create error:', errorMsg)
+            reject(new Error(errorMsg))
           } else if (tab) {
             resolve(tab)
           } else {
-            reject(new Error('Failed to create tab'))
+            reject(new Error('Failed to create tab: no tab object returned'))
           }
         })
       })
+      
+      console.log('NymAI: Tab created:', tab)
       
       if (tab?.id) {
         console.log('NymAI: Tab created with ID:', tab.id)
@@ -73,17 +107,20 @@ function IndexPopup() {
         }, (response) => {
           if (chrome.runtime.lastError) {
             console.error('NymAI: Error sending TRACK_LOGIN_TAB message:', chrome.runtime.lastError)
+            // Don't set error here - tab was created successfully, tracking is just a bonus
           } else {
             console.log('NymAI: Login tab tracking message sent successfully')
           }
         })
       } else {
         console.error('NymAI: Tab created but has no ID')
-        setError('Failed to track login tab. Please try again.')
+        setError('Tab opened but could not be tracked. Login should still work.')
       }
     } catch (err: any) {
       console.error('NymAI: Error initiating OAuth:', err)
-      setError(err?.message || 'Failed to initiate login. Please try again.')
+      const errorMessage = err?.message || err?.toString() || 'Unknown error occurred'
+      console.error('NymAI: Full error details:', err)
+      setError(`Login failed: ${errorMessage}`)
     }
   }
 
@@ -760,11 +797,18 @@ function IndexPopup() {
         
         {/* User authentication section */}
         {!userEmail ? (
-          <button
-            onClick={openLoginPage}
-            className="w-full py-2.5 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
-            Log In / Sign Up
-          </button>
+          <div className="space-y-2">
+            {error && (
+              <div className="mb-2 p-2 bg-red-500/20 border border-red-500/50 rounded text-xs text-red-300">
+                {error}
+              </div>
+            )}
+            <button
+              onClick={openLoginPage}
+              className="w-full py-2.5 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
+              Log In / Sign Up
+            </button>
+          </div>
         ) : (
           <div className="text-center space-y-2">
             <div className="flex items-center justify-center space-x-2">
