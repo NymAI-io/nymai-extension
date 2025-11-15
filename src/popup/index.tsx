@@ -715,7 +715,11 @@ function IndexPopup() {
       {/* Header with Branding */}
       <div className="bg-gray-800/50 border-b border-gray-700/50 px-5 py-4">
         <div className="flex items-center justify-center mb-3 pt-2">
-          <img src="/NymAI_icon.png" alt="NymAI Logo" className="h-12" />
+          <img 
+            src={chrome.runtime.getURL('NymAI_icon.svg')} 
+            alt="NymAI Logo" 
+            className="h-12"
+          />
         </div>
         
         {/* User authentication section */}
