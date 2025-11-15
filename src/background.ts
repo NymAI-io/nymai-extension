@@ -11,6 +11,9 @@ const RATE_LIMIT_WINDOW_MS = 2500
 let lastScanTimestamp = 0
 const MAX_TEXT_LENGTH = 5000
 
+// Track the login tab ID for proactive tab management
+let loginTabId: number | null = null
+
 type SanitizedPayload = {
   content_type: string
   content_data: string
@@ -111,6 +114,100 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   return true // Async response
 })
+
+// Track login tab when OAuth is initiated
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.type === 'TRACK_LOGIN_TAB' && request.tabId) {
+    loginTabId = request.tabId
+    console.log('NymAI: Tracking login tab:', loginTabId)
+    sendResponse({ success: true })
+    return true
+  }
+  return false
+})
+
+// Listen for tab updates to proactively close the login tab after authentication
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // Only process updates for the tracked login tab
+  if (loginTabId === null || tabId !== loginTabId) {
+    return
+  }
+
+  // Check if the tab has completed loading and redirected to nymai.io
+  if (changeInfo.status === 'complete' && tab.url) {
+    const url = tab.url
+    
+    // Check if the tab has redirected to our landing page
+    if (url.startsWith('https://www.nymai.io') || url.startsWith('https://nymai.io')) {
+      console.log('NymAI: Login tab redirected to landing page, will close after delay')
+      
+      // Wait a short delay to ensure the landing page has time to send the session message
+      // Then proactively close the tab (backup in case window.close() fails)
+      setTimeout(() => {
+        if (loginTabId !== null) {
+          chrome.tabs.remove(loginTabId, () => {
+            console.log('NymAI: Login tab closed proactively')
+            loginTabId = null // Reset tracking
+          })
+        }
+      }, 1000) // 1 second delay to ensure message is sent
+    }
+  }
+})
+
+// 5. Listen for external messages from the landing page (OAuth flow)
+chrome.runtime.onMessageExternal.addListener(
+  async (message, sender, sendResponse) => {
+    // Verify the sender is from our trusted domain
+    if (!sender.url || (!sender.url.startsWith('https://www.nymai.io') && !sender.url.startsWith('https://nymai.io') && !sender.url.startsWith('http://localhost'))) {
+      console.warn('NymAI: Rejected message from untrusted source:', sender.url)
+      sendResponse({ success: false, error: 'Untrusted source' })
+      return false
+    }
+
+    // Handle PING messages (for extension detection)
+    if (message.type === 'PING') {
+      sendResponse({ success: true, pong: true })
+      return true
+    }
+
+    // Handle authentication success messages
+    if (message.type === 'NYMAI_AUTH_SUCCESS' && message.session) {
+      try {
+        console.log('NymAI: Received auth session from landing page')
+        
+        // Set the session in Supabase client
+        const { data, error } = await supabase.auth.setSession(message.session)
+        
+        if (error) {
+          console.error('NymAI: Failed to set session:', error)
+          sendResponse({ success: false, error: error.message })
+          return false
+        }
+
+        // Save session to storage (same as popup does)
+        await storageArea.set({ nymAiSession: message.session })
+        
+        console.log('NymAI: Session saved successfully from landing page')
+        
+        // Reset login tab tracking since authentication is complete
+        // (The tab will be closed by the onUpdated listener or by window.close() from the landing page)
+        loginTabId = null
+        
+        sendResponse({ success: true })
+        return true
+      } catch (error: any) {
+        console.error('NymAI: Error processing auth session:', error)
+        sendResponse({ success: false, error: error?.message || 'Unknown error' })
+        return false
+      }
+    }
+
+    // Unknown message type
+    sendResponse({ success: false, error: 'Unknown message type' })
+    return false
+  }
+)
 
 // 4. This is the scanning logic (moved from popup.tsx)
 async function runFullScan(

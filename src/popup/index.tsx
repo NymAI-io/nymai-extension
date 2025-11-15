@@ -23,9 +23,39 @@ function IndexPopup() {
   const [currentUrl, setCurrentUrl] = useState<string | null>(null)
   const [isYouTubeVideo, setIsYouTubeVideo] = useState(false)
 
-  // This function opens our login.tsx tab
-  const openLoginPage = () => {
-    chrome.tabs.create({ url: chrome.runtime.getURL("tabs/login.html") })
+  // This function initiates OAuth login by opening a tab with Supabase OAuth URL
+  const openLoginPage = async () => {
+    try {
+      // Initiate OAuth and get the URL
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: 'https://www.nymai.io'
+        }
+      })
+      
+      if (error) {
+        console.error('OAuth initiation error:', error)
+        setError('Failed to initiate login. Please try again.')
+        return
+      }
+      
+      if (data?.url) {
+        // Open the OAuth URL in a new tab and track it
+        chrome.tabs.create({ url: data.url }, (tab) => {
+          if (tab?.id) {
+            // Send message to background script to track this login tab
+            chrome.runtime.sendMessage({
+              type: 'TRACK_LOGIN_TAB',
+              tabId: tab.id
+            })
+          }
+        })
+      }
+    } catch (err) {
+      console.error('Error initiating OAuth:', err)
+      setError('Failed to initiate login. Please try again.')
+    }
   }
 
   // --- Sign out function ---
