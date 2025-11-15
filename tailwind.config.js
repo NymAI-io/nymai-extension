@@ -7,6 +7,15 @@ module.exports = {
   ],
   theme: {
     extend: {
+      colors: {
+        brand: {
+          primary: "#8b5cf6", // Purple-600
+          primaryDark: "#7c3aed", // Purple-700
+          primaryLight: "#a78bfa", // Purple-400
+          accent: "#3b82f6", // Blue-600
+          accentDark: "#2563eb", // Blue-700
+        },
+      },
       // Add this animation code
       keyframes: {
         "fade-in": {

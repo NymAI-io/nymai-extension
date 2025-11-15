@@ -2,6 +2,7 @@
 import "../style.css"
 import React, { useState, useEffect } from "react"
 import { createClient } from "@supabase/supabase-js"
+import Spinner from "../components/Spinner"
 
 // --- CONFIGURE YOUR KEYS (from your .env file) ---
 const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL as string
@@ -16,6 +17,7 @@ function IndexPopup() {
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [scanResult, setScanResult] = useState<any>(null)
   const [loading, setLoading] = useState(true) // Start in loading state
+  const [isScanning, setIsScanning] = useState(false) // Track active scan operations
   const [error, setError] = useState<string>("")
   const [errorCode, setErrorCode] = useState<number | null>(null)
   const [currentUrl, setCurrentUrl] = useState<string | null>(null)
@@ -169,7 +171,7 @@ function IndexPopup() {
       return
     }
 
-    setLoading(true)
+    setIsScanning(true)
     setError("")
     setScanResult(null)
     setErrorCode(null)
@@ -214,7 +216,7 @@ function IndexPopup() {
         setError("Scan failed: please try again.")
       }
     } finally {
-      setLoading(false)
+      setIsScanning(false)
     }
   }
 
@@ -305,6 +307,7 @@ function IndexPopup() {
     const storageListener = (changes: any) => {
       if (changes.lastScanResult) {
         const newData = changes.lastScanResult.newValue
+        setIsScanning(false) // Stop loading indicator when result arrives
         if (newData) {
           if (newData.error) {
             // It's an error result
@@ -338,17 +341,54 @@ function IndexPopup() {
   }, []) // Empty dependency array ensures this runs only once on mount
 
   // --- Helper function to render score indicators ---
-  const renderScore = (score: number) => {
-    if (score > 80) return <span>🔴 High Risk</span>
-    if (score > 50) return <span>🟡 Moderate</span>
-    return <span>🟢 Low Risk</span>
+  const renderScore = (score: number, isAuthenticity: boolean = false) => {
+    if (isAuthenticity) {
+      // For authenticity, higher score = more AI-like
+      if (score > 80) return <span className="text-red-400 font-semibold">🔴 High AI Likelihood</span>
+      if (score > 50) return <span className="text-yellow-400 font-semibold">🟡 Moderate AI Likelihood</span>
+      return <span className="text-green-400 font-semibold">🟢 Low AI Likelihood</span>
+    } else {
+      // For credibility, higher score = higher risk
+      if (score > 80) return <span className="text-red-400 font-semibold">🔴 High Risk</span>
+      if (score > 50) return <span className="text-yellow-400 font-semibold">🟡 Moderate Risk</span>
+      return <span className="text-green-400 font-semibold">🟢 Low Risk</span>
+    }
+  }
+
+  // --- Helper function to get score color ---
+  const getScoreColor = (score: number, isAuthenticity: boolean = false) => {
+    if (isAuthenticity) {
+      if (score > 80) return "text-red-400"
+      if (score > 50) return "text-yellow-400"
+      return "text-green-400"
+    } else {
+      if (score > 80) return "text-red-400"
+      if (score > 50) return "text-yellow-400"
+      return "text-green-400"
+    }
   }
 
   // --- Hybrid Render Function: Prioritized UI Logic ---
   const renderBody = () => {
-    // Priority 1: Loading state
+    // Priority 1: Initial loading state
     if (loading) {
-      return <div className="text-center p-4">Loading...</div>
+      return (
+        <div className="flex flex-col items-center justify-center py-12 space-y-4">
+          <Spinner size="lg" />
+          <p className="text-gray-400 text-sm">Loading NymAI...</p>
+        </div>
+      )
+    }
+
+    // Priority 1.5: Active scan in progress
+    if (isScanning) {
+      return (
+        <div className="flex flex-col items-center justify-center py-12 space-y-4">
+          <Spinner size="lg" />
+          <p className="text-gray-300 font-medium">Analyzing content...</p>
+          <p className="text-gray-400 text-xs">This may take a few moments</p>
+        </div>
+      )
     }
 
     // Priority 2: Error states (with special handling for 402 upgrade prompt)
@@ -361,30 +401,32 @@ function IndexPopup() {
       // Special case: 402 error code shows upgrade prompt
       if (errorCode === 402) {
         return (
-          <div className="mt-4 p-4 bg-yellow-900/50 border border-yellow-700 text-yellow-200 rounded-lg text-center">
-            <p className="font-semibold">{error}</p>
-            <p className="text-sm mt-1 mb-3">Upgrade to Pro for more scans.</p>
-            <button
-              onClick={handleUpgrade}
-              className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors">
-              Upgrade to Pro
-            </button>
-            <button
-              onClick={handleStartNewScan}
-              className="mt-3 w-full py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors">
-              Start New Scan
-            </button>
+          <div className="mt-4 p-5 bg-yellow-900/50 border border-yellow-700 text-yellow-200 rounded-lg text-center space-y-3">
+            <p className="font-semibold text-base">{error}</p>
+            <p className="text-sm text-yellow-300">Upgrade to Pro for more scans.</p>
+            <div className="space-y-2 pt-2">
+              <button
+                onClick={handleUpgrade}
+                className="w-full py-2.5 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
+                Upgrade to Pro
+              </button>
+              <button
+                onClick={handleStartNewScan}
+                className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors">
+                Start New Scan
+              </button>
+            </div>
           </div>
         )
       }
 
       // Generic error display
       return (
-        <div className="mt-4 p-3 bg-red-800 text-red-200 rounded-lg text-sm space-y-3">
-          <div>{isActivationError ? error : `Last scan failed: ${error}`}</div>
+        <div className="mt-4 p-4 bg-red-900/30 border border-red-700/50 text-red-200 rounded-lg space-y-3">
+          <div className="text-sm font-medium">{isActivationError ? error : `Last scan failed: ${error}`}</div>
           <button
             onClick={handleStartNewScan}
-            className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors">
+            className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors">
             Start New Scan
           </button>
         </div>
@@ -416,56 +458,86 @@ function IndexPopup() {
       const credRiskScore = scanResult?.credibility?.risk_score ?? 0
 
       return (
-        <div className="mt-4 p-3 bg-gray-700 rounded-lg animate-fade-in">
-          <h3 className="text-lg font-bold text-white mb-2">NymAI Analysis</h3>
-          
-          {/* Authenticity Section - Only show if data exists */}
-          {hasAuthenticity && (
-            <div className={hasCredibility ? "mb-3" : ""}>
-              <p className="text-gray-300">Authenticity (AI Detection):</p>
-              <div className="flex justify-between items-center">
-                <span className="text-2xl">{authScore}% AI</span>
-                {renderScore(authScore)}
-              </div>
-              <p className="text-sm text-gray-400 italic mt-1">
-                "{scanResult?.authenticity?.analysis || "No analysis provided."}"
-              </p>
-            </div>
-          )}
-          
-          {/* Credibility Section - Only show if data exists */}
-          {hasCredibility && (
-            <div className={hasAuthenticity ? "border-t border-gray-600 pt-3" : ""}>
-              <p className="text-gray-300">Credibility (Factual Truth):</p>
-              <div className="flex justify-between items-center">
-                <span className="text-2xl">{credRiskScore}% Risk</span>
-                {renderScore(credRiskScore)}
-              </div>
-              <p className="text-sm text-gray-400 italic mt-1">
-                "{scanResult?.credibility?.analysis || "No analysis provided."}"
-              </p>
-              {/* Claims Section */}
-              {scanResult?.credibility?.claims?.length > 0 && (
-                <div className="mt-3">
-                  <p className="text-gray-300 font-medium">Claims Found:</p>
-                  {scanResult.credibility.claims.map((claim: any, index: number) => (
-                    <div key={index} className="border-l-2 border-yellow-500 pl-2 mt-2">
-                      <p className="text-sm text-white">{claim.claim}</p>
-                      <p className={`text-xs ${claim.is_true ? "text-green-400" : "text-red-400"}`}>
-                        Verdict: {String(claim.is_true).toUpperCase()} - {claim.evidence}
-                      </p>
-                    </div>
-                  ))}
+        <div className="mt-4 bg-gray-700/50 rounded-xl border border-gray-600/50 overflow-hidden animate-fade-in shadow-lg">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-brand-primary/20 to-brand-accent/20 px-5 py-3 border-b border-gray-600/50">
+            <h3 className="text-lg font-bold text-white">Analysis Results</h3>
+            {scanResult?.model_used && (
+              <p className="text-xs text-gray-400 mt-1">Model: {scanResult.model_used}</p>
+            )}
+          </div>
+
+          <div className="p-5 space-y-6">
+            {/* Authenticity Section - Only show if data exists */}
+            {hasAuthenticity && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-400 uppercase tracking-wide">Authenticity</p>
+                  {renderScore(authScore, true)}
                 </div>
-              )}
-            </div>
-          )}
+                <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
+                  <div className="flex items-baseline space-x-2 mb-2">
+                    <span className={`text-4xl font-bold ${getScoreColor(authScore, true)}`}>
+                      {authScore}
+                    </span>
+                    <span className="text-xl text-gray-400 font-medium">% AI</span>
+                  </div>
+                  <p className="text-sm text-gray-300 leading-relaxed mt-2">
+                    {scanResult?.authenticity?.analysis || "No analysis provided."}
+                  </p>
+                </div>
+              </div>
+            )}
+            
+            {/* Credibility Section - Only show if data exists */}
+            {hasCredibility && (
+              <div className={`space-y-3 ${hasAuthenticity ? "border-t border-gray-600/50 pt-6" : ""}`}>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-400 uppercase tracking-wide">Credibility</p>
+                  {renderScore(credRiskScore, false)}
+                </div>
+                <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
+                  <div className="flex items-baseline space-x-2 mb-2">
+                    <span className={`text-4xl font-bold ${getScoreColor(credRiskScore, false)}`}>
+                      {credRiskScore}
+                    </span>
+                    <span className="text-xl text-gray-400 font-medium">% Risk</span>
+                  </div>
+                  <p className="text-sm text-gray-300 leading-relaxed mt-2">
+                    {scanResult?.credibility?.analysis || "No analysis provided."}
+                  </p>
+                  
+                  {/* Claims Section */}
+                  {scanResult?.credibility?.claims?.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-700/50 space-y-3">
+                      <p className="text-sm font-semibold text-gray-300">Claims Found</p>
+                      {scanResult.credibility.claims.map((claim: any, index: number) => (
+                        <div key={index} className="bg-gray-900/50 rounded-lg p-3 border-l-4 border-yellow-500/50">
+                          <p className="text-sm text-white font-medium mb-1">{claim.claim}</p>
+                          <div className="flex items-start space-x-2">
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                              claim.is_true === true ? "bg-green-500/20 text-green-400" :
+                              claim.is_true === false ? "bg-red-500/20 text-red-400" :
+                              "bg-yellow-500/20 text-yellow-400"
+                            }`}>
+                              {claim.is_true === true ? "TRUE" : claim.is_true === false ? "FALSE" : "MISLEADING"}
+                            </span>
+                            <p className="text-xs text-gray-400 flex-1">{claim.evidence}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
           
-          {/* Start New Scan Button */}
-          <div className="mt-4 pt-3 border-t border-gray-600">
+          {/* Footer with Start New Scan Button */}
+          <div className="px-5 py-4 bg-gray-800/30 border-t border-gray-600/50">
             <button
               onClick={handleStartNewScan}
-              className="w-full py-2 bg-gray-600 hover:bg-gray-500 text-white font-semibold rounded-lg transition-colors">
+              className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors">
               Start New Scan
             </button>
           </div>
@@ -477,10 +549,10 @@ function IndexPopup() {
     // Special case: YouTube video page shows a scan button
     if (isYouTubeVideo) {
       return (
-        <div className="mt-4 p-4 bg-gray-700 rounded-lg text-center">
+        <div className="mt-4 p-5 bg-gray-700/50 rounded-lg border border-gray-600/50 text-center">
           <button
             onClick={handleScanYouTubeVideo}
-            className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors">
+            className="w-full py-3 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
             Scan this YouTube Video
           </button>
         </div>
@@ -489,18 +561,18 @@ function IndexPopup() {
 
     // Default: Mission Control buttons
     return (
-      <div className="mt-4 space-y-2">
+      <div className="mt-4 space-y-3">
         <button
           onClick={() => activateSelectionMode('credibility')}
-          className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors">
+          className="w-full py-3 bg-brand-accent hover:bg-brand-accentDark text-white font-semibold rounded-lg transition-colors shadow-lg">
           Check Credibility
         </button>
         <button
           onClick={() => activateSelectionMode('authenticity')}
-          className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors">
+          className="w-full py-3 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
           Check Authenticity
         </button>
-        <p className="text-xs text-gray-400 text-center mt-2">
+        <p className="text-xs text-gray-400 text-center mt-3 px-2">
           Or right-click on text/images for quick scans
         </p>
       </div>
@@ -509,33 +581,47 @@ function IndexPopup() {
 
   // --- Main Render ---
   return (
-    <div className="w-[350px] h-auto p-4 bg-gray-800 font-sans text-gray-100">
-      <h1 className="text-2xl font-black text-center mb-4 text-purple-400">
-        NymAI
-      </h1>
-      
-      {/* User authentication section */}
-      {!userEmail ? (
-        <button
-          onClick={openLoginPage}
-          className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors">
-          Log In / Sign Up
-        </button>
-      ) : (
-        <div className="text-center mb-4">
-          <p className="text-sm text-green-400">
-            Logged in as {userEmail}
-          </p>
-          <button
-            onClick={signOut}
-            className="mt-2 text-xs text-purple-400 hover:text-purple-300 underline">
-            Sign Out
-          </button>
+    <div className="w-[380px] min-h-[400px] bg-gradient-to-b from-gray-900 to-gray-800 font-sans text-gray-100">
+      {/* Header with Branding */}
+      <div className="bg-gray-800/50 border-b border-gray-700/50 px-5 py-4">
+        <div className="flex items-center justify-center space-x-2 mb-3">
+          <div className="w-8 h-8 bg-gradient-to-br from-brand-primary to-brand-accent rounded-lg flex items-center justify-center">
+            <span className="text-white font-bold text-lg">N</span>
+          </div>
+          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-brand-primary to-brand-accent">
+            NymAI
+          </h1>
         </div>
-      )}
+        
+        {/* User authentication section */}
+        {!userEmail ? (
+          <button
+            onClick={openLoginPage}
+            className="w-full py-2.5 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
+            Log In / Sign Up
+          </button>
+        ) : (
+          <div className="text-center space-y-2">
+            <div className="flex items-center justify-center space-x-2">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <p className="text-sm text-gray-300">
+                Logged in as <span className="text-green-400 font-medium">{userEmail}</span>
+              </p>
+            </div>
+            <button
+              onClick={signOut}
+              className="text-xs text-gray-400 hover:text-gray-300 underline transition-colors">
+              Sign Out
+            </button>
+          </div>
+        )}
+      </div>
 
-      {/* Hybrid body: Results > Errors > Mission Control */}
-      {userEmail && renderBody()}
+      {/* Main Content Area */}
+      <div className="p-5">
+        {/* Hybrid body: Results > Errors > Mission Control */}
+        {userEmail && renderBody()}
+      </div>
     </div>
   )
 }
