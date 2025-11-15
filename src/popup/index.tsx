@@ -3,7 +3,6 @@ import "../style.css"
 import React, { useState, useEffect } from "react"
 import { createClient } from "@supabase/supabase-js"
 import Spinner from "../components/Spinner"
-import LoginForm from "../components/LoginForm"
 
 // --- CONFIGURE YOUR KEYS (from your .env file) ---
 const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL as string
@@ -23,41 +22,10 @@ function IndexPopup() {
   const [errorCode, setErrorCode] = useState<number | null>(null)
   const [currentUrl, setCurrentUrl] = useState<string | null>(null)
   const [isYouTubeVideo, setIsYouTubeVideo] = useState(false)
-  const [showLoginForm, setShowLoginForm] = useState(false) // Show/hide login form
 
-  // This function shows the login form instead of directly calling OAuth
+  // Open the dedicated login page on nymai.io
   const openLoginPage = () => {
-    setShowLoginForm(true)
-    setError('') // Clear any previous errors
-  }
-
-  // Handle successful login from LoginForm
-  const handleLoginSuccess = async () => {
-    setShowLoginForm(false)
-    // Refresh user data
-    try {
-      const {
-        data: { user },
-        error: userError
-      } = await supabase.auth.getUser()
-
-      if (userError || !user) {
-        setUserEmail(null)
-        await storageArea.remove("nymAiSession")
-      } else {
-        const {
-          data: { session }
-        } = await supabase.auth.getSession()
-        if (session) {
-          await storageArea.set({ nymAiSession: session })
-          setUserEmail(user.email || null)
-        } else {
-          setUserEmail(null)
-        }
-      }
-    } catch (err) {
-      console.error('NymAI: Error refreshing user data after login:', err)
-    }
+    chrome.tabs.create({ url: 'https://www.nymai.io/login?dev_extension_id=' + chrome.runtime.id })
   }
 
 
@@ -797,30 +765,11 @@ function IndexPopup() {
 
       {/* Main Content Area */}
       <div className="p-5">
-        {/* Show login form if user clicked "Log In / Sign Up" */}
-        {showLoginForm && !userEmail ? (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-200">Log In / Sign Up</h2>
-              <button
-                onClick={() => {
-                  setShowLoginForm(false)
-                  setError('')
-                }}
-                className="text-gray-400 hover:text-gray-200 text-sm">
-                ✕
-              </button>
-            </div>
-            <LoginForm
-              onLoginSuccess={handleLoginSuccess}
-              onError={setError}
-            />
-          </div>
-        ) : userEmail ? (
+        {userEmail ? (
           /* Hybrid body: Results > Errors > Mission Control */
           renderBody()
         ) : (
-          /* Show message when not logged in and login form is hidden */
+          /* Show message when not logged in */
           <div className="text-center py-8 text-gray-400 text-sm">
             Please log in to use NymAI
           </div>
