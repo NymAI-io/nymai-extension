@@ -593,22 +593,23 @@ function IndexPopup() {
     }
 
     // Priority 4: Default state - Mission Control UI (only shown when no results/errors)
-    // Special case: YouTube video page shows a scan button
-    if (isYouTubeVideo) {
-      return (
-        <div className="mt-4 p-5 bg-gray-700/50 rounded-lg border border-gray-600/50 text-center">
-          <button
-            onClick={handleScanYouTubeVideo}
-            className="w-full py-3 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
-            Scan this YouTube Video
-          </button>
-        </div>
-      )
-    }
-
-    // Default: Mission Control buttons
     return (
       <div className="mt-4 space-y-3">
+        {/* Show YouTube video scan button if on YouTube video page */}
+        {isYouTubeVideo && (
+          <div className="mb-4 p-5 bg-gray-700/60 rounded-xl border-2 border-gray-600/70 shadow-md">
+            <button
+              onClick={handleScanYouTubeVideo}
+              className="w-full py-3 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
+              Scan this YouTube Video
+            </button>
+            <p className="text-xs text-gray-400 text-center mt-3">
+              Or use the buttons below to scan other elements
+            </p>
+          </div>
+        )}
+        
+        {/* Always show the standard scan buttons */}
         <button
           onClick={() => activateSelectionMode('credibility')}
           className="w-full py-3 bg-brand-accent hover:bg-brand-accentDark text-white font-semibold rounded-lg transition-colors shadow-lg">
