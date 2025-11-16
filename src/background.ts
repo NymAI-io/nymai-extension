@@ -112,6 +112,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     runFullScan(request.content, requestedScanType)
     sendResponse({ success: true })
   }
+  
+  // Handle YouTube URL scan requests from popup
+  if (request.type === 'SCAN_YOUTUBE_URL' && request.url) {
+    console.log("BACKGROUND: Received YouTube URL scan request:", request.url)
+    handleYouTubeUrlScan(request.url)
+    sendResponse({ success: true })
+  }
+  
   return true // Async response
 })
 
@@ -363,6 +371,126 @@ async function runFullScan(
         ? "The request timed out. Please try again."
         : "Scan failed due to an unexpected error. Please try again."
     storageArea.set({ lastScanResult: { error: message, error_code: 500 } })
+  } finally {
+    // Clear badge and scanning state in all cases (success or failure)
+    chrome.action.setBadgeText({ text: '' })
+    await storageArea.set({ isScanning: false })
+  }
+}
+
+// Handle YouTube URL scans initiated from the popup
+async function handleYouTubeUrlScan(url: string) {
+  const now = Date.now()
+  if (now - lastScanTimestamp < RATE_LIMIT_WINDOW_MS) {
+    await storageArea.set({
+      lastScanResult: { error: "Please wait a moment before starting another scan.", error_code: 429 }
+    })
+    return
+  }
+
+  // Set badge and scanning state early to provide immediate feedback
+  chrome.action.setBadgeText({ text: '...' })
+  chrome.action.setBadgeBackgroundColor({ color: '#4fd1c5' })
+  await storageArea.set({ isScanning: true })
+
+  lastScanTimestamp = now
+
+  // Validate URL
+  if (!url || !url.includes('youtube.com/watch')) {
+    chrome.action.setBadgeText({ text: '' })
+    await storageArea.set({
+      lastScanResult: { error: "Invalid YouTube URL.", error_code: 400 },
+      isScanning: false
+    })
+    return
+  }
+
+  // Sanitize the URL
+  const sanitizedUrl = sanitizeUrl(url)
+  if (!sanitizedUrl) {
+    chrome.action.setBadgeText({ text: '' })
+    await storageArea.set({
+      lastScanResult: { error: "Unable to process the YouTube URL. Please ensure it's a valid HTTPS URL.", error_code: 400 },
+      isScanning: false
+    })
+    return
+  }
+
+  // Get the session from storage
+  const storageData = await storageArea.get("nymAiSession")
+  const session = storageData.nymAiSession
+  if (!session || !session.access_token) {
+    console.error("NymAI Error: No user session found. Please log in.")
+    chrome.action.setBadgeText({ text: '' })
+    await storageArea.set({ 
+      lastScanResult: { error: "You must be logged in to scan.", error_code: 401 },
+      isScanning: false 
+    })
+    return
+  }
+  const realToken = session.access_token
+
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 30000)
+    const response = await fetch(`${NYMAI_API_BASE_URL}/v1/scan/credibility`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${realToken}`
+      },
+      body: JSON.stringify({
+        content_type: "video",
+        content_data: sanitizedUrl
+      }),
+      signal: controller.signal
+    })
+    clearTimeout(timeout)
+
+    const rawBody = await response.text()
+    const contentType = response.headers.get("content-type") ?? ""
+
+    let data: any
+    if (contentType.includes("application/json")) {
+      try {
+        data = JSON.parse(rawBody)
+      } catch (parseError) {
+        throw new Error(
+          `Backend returned invalid JSON (status ${response.status}): ${String(parseError)}`
+        )
+      }
+    } else {
+      const snippet = rawBody ? rawBody.slice(0, 200) : "(empty response)"
+      throw new Error(
+        `Backend returned non-JSON response (status ${response.status}): ${snippet}`
+      )
+    }
+    
+    // Handle 402 error specifically (insufficient credits)
+    if (response.status === 402) {
+      await storageArea.set({ 
+        lastScanResult: { error: data.detail || "Insufficient credits to perform this scan.", error_code: 402 } 
+      })
+      return // Badge will be cleared in finally block
+    }
+
+    if (response.status !== 200) {
+      throw new Error(data?.detail || `Request failed with status ${response.status}`)
+    }
+    
+    // Success! Save the result to storage
+    await storageArea.set({ lastScanResult: data })
+    console.log("NymAI YouTube Scan Complete. Result saved.")
+  } catch (e) {
+    console.error("NymAI YouTube Scan Failed:", e)
+    // Save the error to storage so the popup can see it
+    const message =
+      e instanceof DOMException && e.name === "AbortError"
+        ? "The request timed out. Please try again."
+        : e instanceof Error
+        ? e.message
+        : "Scan failed due to an unexpected error. Please try again."
+    await storageArea.set({ lastScanResult: { error: message, error_code: 500 } })
   } finally {
     // Clear badge and scanning state in all cases (success or failure)
     chrome.action.setBadgeText({ text: '' })

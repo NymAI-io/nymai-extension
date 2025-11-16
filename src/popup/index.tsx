@@ -210,93 +210,41 @@ function IndexPopup() {
     }
   }
 
-  // --- New function to scan YouTube video from the popup ---
+  // --- Function to scan YouTube video from the popup ---
+  // This now delegates to the background script for consistent behavior
   const handleScanYouTubeVideo = async () => {
     if (!currentUrl) {
       setError("Could not get the current tab's URL.")
       return
     }
 
+    // Set local state to show spinner immediately
+    // The popup will automatically update when the result is saved to storage
     setIsScanning(true)
     setError("")
     setScanResult(null)
     setErrorCode(null)
 
     try {
-      // This logic is similar to runFullScan in background.ts
-      const storageAreaInstance = getStorageArea()
-      if (!storageAreaInstance) {
-        throw new Error("Storage is not available")
-      }
-      const storageData = await storageAreaInstance.get("nymAiSession")
-      const session = storageData.nymAiSession
-      if (!session || !session.access_token) {
-        throw new Error("You must be logged in to scan.")
-      }
-
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-      const response = await fetch(`${NYMAI_API_BASE_URL}/v1/scan/credibility`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`
+      // Send message to background script to handle the scan
+      chrome.runtime.sendMessage(
+        { 
+          type: 'SCAN_YOUTUBE_URL', 
+          url: currentUrl 
         },
-        body: JSON.stringify({
-          content_type: "video",
-          content_data: currentUrl
-        }),
-        signal: controller.signal
-      })
-      clearTimeout(timeout)
-
-      const rawBody = await response.text()
-      const contentType = response.headers.get("content-type") ?? ""
-      
-      let data: any
-      if (contentType.includes("application/json")) {
-        try {
-          data = JSON.parse(rawBody)
-        } catch (parseError) {
-          throw new Error(`Backend returned invalid JSON (status ${response.status})`)
+        (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('Error sending scan message:', chrome.runtime.lastError)
+            setError("Failed to initiate scan. Please try again.")
+            setIsScanning(false)
+          }
+          // Note: We don't wait for a response here because the background script
+          // will save the result to storage, and our storage listener will update the UI
         }
-      } else {
-        const snippet = rawBody ? rawBody.slice(0, 200) : "(empty response)"
-        throw new Error(`Backend returned non-JSON response (status ${response.status}): ${snippet}`)
-      }
-
-      // Handle 402 error specifically (insufficient credits)
-      if (response.status === 402) {
-        setError(data.detail || "Insufficient credits to perform this scan.")
-        setErrorCode(402)
-        await storageArea.set({
-          lastScanResult: { error: data.detail || "Insufficient credits to perform this scan.", error_code: 402 }
-        })
-        return
-      }
-
-      if (!response.ok) {
-        throw new Error(data.detail || `Request failed with status ${response.status}`)
-      }
-
-      // The storage listener will update the UI, but we can set it here for immediate feedback
-      setScanResult(data)
+      )
     } catch (e: any) {
-      if (e?.name === "AbortError") {
-        setError("Scan failed: request timed out.")
-        setErrorCode(500)
-        await storageArea.set({
-          lastScanResult: { error: "Scan failed: request timed out.", error_code: 500 }
-        })
-      } else {
-        const errorMessage = e?.message || "Scan failed: please try again."
-        setError(errorMessage)
-        setErrorCode(500)
-        await storageArea.set({
-          lastScanResult: { error: errorMessage, error_code: 500 }
-        })
-      }
-    } finally {
+      console.error('Error initiating YouTube scan:', e)
+      setError("Failed to initiate scan. Please try again.")
       setIsScanning(false)
     }
   }
