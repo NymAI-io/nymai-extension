@@ -6,7 +6,7 @@
   "author": "Plasmo Corp. <foss@plasmo.com>",
   "scripts": {
     "dev": "plasmo dev",
-    "build": "plasmo build",
+    "build": "plasmo build && node scripts/secure-manifest.js",
     "package": "plasmo package"
   },
   "dependencies": {
@@ -52,7 +52,8 @@
     "externally_connectable": {
       "matches": [
         "https://www.nymai.io/*",
-        "https://nymai.io/*"
+        "https://nymai.io/*",
+        "http://localhost:*/*"
       ]
     },
     "web_accessible_resources": [

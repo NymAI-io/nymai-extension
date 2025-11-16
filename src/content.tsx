@@ -227,8 +227,8 @@ function createHighlighter() {
   // The highlighter uses position: absolute for document-relative positioning
   highlighter.style.cssText = `
     position: absolute;
-    border: 2px solid #8b5cf6;
-    background: rgba(139, 92, 246, 0.2);
+    border: 2px solid #4fd1c5;
+    background: rgba(79, 209, 197, 0.2);
     pointer-events: none;
     z-index: 999999;
     display: none;
