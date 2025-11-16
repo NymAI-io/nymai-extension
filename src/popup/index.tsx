@@ -675,7 +675,7 @@ function IndexPopup() {
 
   // --- Main Render ---
   return (
-    <div className="w-[380px] min-h-[400px] bg-white font-sans text-gray-900">
+    <div className="w-[380px] min-h-[400px] bg-gray-50 font-sans text-gray-900">
       {/* Header with Branding */}
       <div className="bg-white border-b border-gray-200 px-5 py-4">
         <div className="flex items-center justify-center mb-3 pt-2">
