@@ -10,6 +10,32 @@
   box-sizing: border-box;
 }
 
+/* Hide Plasmo shadow container when it's used as a hidden root */
+#nymai-plasmo-root,
+#nymai-plasmo-root #plasmo-shadow-container,
+#nymai-plasmo-root > *,
+#nymai-plasmo-root #plasmo-shadow-container > * {
+  display: none !important;
+  visibility: hidden !important;
+  position: absolute !important;
+  left: -9999px !important;
+  top: -9999px !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: -9999 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
 /* NymAI Interactive Selection Mode Highlighter */
 #nymai-highlighter {
   position: absolute;

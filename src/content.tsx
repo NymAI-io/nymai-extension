@@ -14,7 +14,20 @@ function getOrCreateHiddenContainer(): HTMLElement {
   if (!hiddenContainer) {
     hiddenContainer = document.createElement('div')
     hiddenContainer.id = 'nymai-plasmo-root'
-    hiddenContainer.style.cssText = 'display: none !important; position: absolute; left: -9999px; width: 0; height: 0; overflow: hidden;'
+    // Use multiple CSS properties to ensure it's completely hidden
+    hiddenContainer.style.cssText = `
+      display: none !important;
+      visibility: hidden !important;
+      position: absolute !important;
+      left: -9999px !important;
+      top: -9999px !important;
+      width: 0 !important;
+      height: 0 !important;
+      overflow: hidden !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+      z-index: -9999 !important;
+    `
     
     // Ensure document.body exists before appending
     if (document.body) {
@@ -29,6 +42,45 @@ function getOrCreateHiddenContainer(): HTMLElement {
         })
       }
     }
+    
+    // Use MutationObserver to ensure the container and its children stay hidden
+    // This prevents Plasmo's shadow container from becoming visible
+    const observer = new MutationObserver(() => {
+      if (hiddenContainer) {
+        // Force hide the container itself
+        hiddenContainer.style.cssText = `
+          display: none !important;
+          visibility: hidden !important;
+          position: absolute !important;
+          left: -9999px !important;
+          top: -9999px !important;
+          width: 0 !important;
+          height: 0 !important;
+          overflow: hidden !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
+          z-index: -9999 !important;
+        `
+        
+        // Force hide all children (including Plasmo's shadow container)
+        const children = hiddenContainer.querySelectorAll('*')
+        children.forEach((child: HTMLElement) => {
+          child.style.cssText = `
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+          `
+        })
+      }
+    })
+    
+    observer.observe(hiddenContainer, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style', 'class']
+    })
   }
   return hiddenContainer
 }
@@ -78,10 +130,11 @@ if (document.readyState === 'loading') {
 // This is a Plasmo-specific feature to get the right-clicked element (for Fast Path)
 // Plasmo uses this to determine where to mount React components for context menu features
 export const getRootContainer = (payload) => {
-  // If no payload or targetElementId, return hidden container to prevent createRoot error
-  // Plasmo will mount React to this hidden container, but our component returns null so nothing renders
+  // If no payload or targetElementId, return null to prevent mounting
+  // Plasmo should handle null gracefully, but if it doesn't, we'll use hidden container as fallback
   if (!payload || !payload.targetElementId) {
-    return getOrCreateHiddenContainer()
+    // Try returning null first - if Plasmo errors, we'll catch it and use hidden container
+    return null
   }
   
   // Try to find the target element
@@ -92,10 +145,9 @@ export const getRootContainer = (payload) => {
     return element
   }
   
-  // If element doesn't exist, return hidden container instead of null
-  // This prevents Plasmo from calling createRoot(null) which causes the error
-  console.warn('NymAI: getRootContainer - target element not found, using hidden container:', payload.targetElementId)
-  return getOrCreateHiddenContainer()
+  // If element doesn't exist, return null to prevent mounting
+  console.warn('NymAI: getRootContainer - target element not found:', payload.targetElementId)
+  return null
 }
 
 // State for Interactive Selection Mode
@@ -550,5 +602,67 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 export default () => {
   // This component should never actually render since getRootContainer returns null
   // when there's no valid target element
+  // Return an empty fragment that's guaranteed to be hidden
   return null
+}
+
+// Additional safety: Hide any Plasmo containers that might appear in the DOM
+// This catches containers that Plasmo might create outside of our hidden container
+if (typeof window !== 'undefined' && document.body) {
+  const hidePlasmoContainers = () => {
+    // Find any Plasmo shadow containers anywhere in the document
+    const plasmoContainers = document.querySelectorAll('#nymai-plasmo-root, #plasmo-shadow-container, [id^="plasmo-shadow"], [id*="plasmo"]')
+    plasmoContainers.forEach((container: HTMLElement) => {
+      // Check if container is visible (has dimensions or is in viewport)
+      const rect = container.getBoundingClientRect()
+      const computedStyle = window.getComputedStyle(container)
+      const isVisible = rect.width > 0 || rect.height > 0 || 
+                       computedStyle.display !== 'none' || 
+                       computedStyle.visibility !== 'hidden' ||
+                       parseFloat(computedStyle.opacity) > 0
+      
+      if (isVisible) {
+        // Force hide the container
+        container.style.cssText = `
+          display: none !important;
+          visibility: hidden !important;
+          position: absolute !important;
+          left: -9999px !important;
+          top: -9999px !important;
+          width: 0 !important;
+          height: 0 !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
+          z-index: -9999 !important;
+        `
+        
+        // Also hide all children
+        const children = container.querySelectorAll('*')
+        children.forEach((child: HTMLElement) => {
+          child.style.cssText = `
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+          `
+        })
+      }
+    })
+  }
+  
+  // Run immediately
+  hidePlasmoContainers()
+  
+  // Watch for new containers being added
+  const observer = new MutationObserver(() => {
+    hidePlasmoContainers()
+  })
+  
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  })
+  
+  // Also check periodically as a fallback (less frequent to avoid performance issues)
+  setInterval(hidePlasmoContainers, 500)
 }

@@ -9,7 +9,81 @@ const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL as string
 const SUPABASE_ANON_KEY = process.env.PLASMO_PUBLIC_SUPABASE_ANON_KEY as string
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 const NYMAI_API_BASE_URL = process.env.PLASMO_PUBLIC_NYMAI_API_BASE_URL as string
-const storageArea = chrome.storage.session ?? chrome.storage.local
+// Lazy getter for storage area - initialized when first accessed
+// This ensures chrome API is available when we try to use it
+let _storageArea: chrome.storage.StorageArea | null = null
+
+function getStorageArea(): chrome.storage.StorageArea | null {
+  if (_storageArea !== null) {
+    return _storageArea
+  }
+  
+  try {
+    // Check if we're in a Chrome extension context
+    if (typeof chrome === 'undefined') {
+      console.error('NymAI: chrome is undefined - not in extension context')
+      _storageArea = null
+      return null
+    }
+    
+    // Check if chrome.runtime is available (indicates extension context is ready)
+    if (!chrome.runtime || !chrome.runtime.id) {
+      console.error('NymAI: chrome.runtime is not available - extension not loaded')
+      _storageArea = null
+      return null
+    }
+    
+    // Check if chrome.storage exists
+    if (!chrome.storage) {
+      console.error('NymAI: chrome.storage is not available - check manifest permissions')
+      _storageArea = null
+      return null
+    }
+    
+    // Try session storage first (available in Chrome 102+)
+    if (chrome.storage.session) {
+      _storageArea = chrome.storage.session
+      console.log('NymAI: Using chrome.storage.session')
+      return _storageArea
+    }
+    
+    // Fallback to local storage (always available if storage permission is granted)
+    if (chrome.storage.local) {
+      _storageArea = chrome.storage.local
+      console.log('NymAI: Using chrome.storage.local')
+      return _storageArea
+    }
+    
+    console.error('NymAI: Neither session nor local storage is available')
+    console.error('NymAI: chrome.storage keys:', Object.keys(chrome.storage || {}))
+    _storageArea = null
+    return null
+  } catch (e) {
+    console.error('NymAI: Error initializing storage:', e)
+    _storageArea = null
+    return null
+  }
+}
+
+// For backward compatibility, create a proxy object that safely handles unavailable storage
+const storageArea = new Proxy({} as chrome.storage.StorageArea, {
+  get(target, prop) {
+    const area = getStorageArea()
+    if (!area) {
+      // Return a no-op function for methods, or undefined for properties
+      if (typeof prop === 'string' && ['get', 'set', 'remove', 'clear'].includes(prop)) {
+        return async () => ({})
+      }
+      return undefined
+    }
+    const value = area[prop as keyof chrome.storage.StorageArea]
+    // Bind methods to the storage area
+    if (typeof value === 'function') {
+      return value.bind(area)
+    }
+    return value
+  }
+})
 const REQUEST_TIMEOUT_MS = 30000
 
 function IndexPopup() {
@@ -32,7 +106,14 @@ function IndexPopup() {
   // --- Sign out function ---
   const signOut = async () => {
     await supabase.auth.signOut()
-    await storageArea.remove("nymAiSession")
+    const storageAreaInstance = getStorageArea()
+    if (storageAreaInstance) {
+      try {
+        await storageAreaInstance.remove("nymAiSession")
+      } catch (e) {
+        console.warn('NymAI: Failed to remove session from storage:', e)
+      }
+    }
     setUserEmail(null)
     setScanResult(null)
     setError("")
@@ -143,7 +224,11 @@ function IndexPopup() {
 
     try {
       // This logic is similar to runFullScan in background.ts
-      const storageData = await storageArea.get("nymAiSession")
+      const storageAreaInstance = getStorageArea()
+      if (!storageAreaInstance) {
+        throw new Error("Storage is not available")
+      }
+      const storageData = await storageAreaInstance.get("nymAiSession")
       const session = storageData.nymAiSession
       if (!session || !session.access_token) {
         throw new Error("You must be logged in to scan.")
@@ -224,9 +309,16 @@ function IndexPopup() {
     setErrorCode(null)
     setIsScanning(false)
     
-    // Clear persisted state in chrome.storage.local
-    await storageArea.remove("lastScanResult")
-    await storageArea.set({ isScanning: false })
+    // Clear persisted state in chrome.storage.local (if available)
+    const storageAreaInstance = getStorageArea()
+    if (storageAreaInstance) {
+      try {
+        await storageAreaInstance.remove("lastScanResult")
+        await storageAreaInstance.set({ isScanning: false })
+      } catch (e) {
+        console.warn('NymAI: Failed to clear storage:', e)
+      }
+    }
   }
 
   // --- Data Fetching: Load scan results from chrome.storage.local ---
@@ -235,9 +327,17 @@ function IndexPopup() {
       try {
         // SESSION RE-HYDRATION: Check storage for saved session and restore it
         console.log('NymAI: Checking storage for saved session...')
-        const storage = await storageArea.get("nymAiSession")
         
-        if (storage.nymAiSession) {
+        const storageAreaInstance = getStorageArea()
+        if (!storageAreaInstance) {
+          console.error('NymAI: Storage area is not available')
+          setLoading(false)
+          return
+        }
+        
+        const storage = await storageAreaInstance.get("nymAiSession")
+        
+        if (storage?.nymAiSession) {
           console.log('NymAI: Found saved session in storage, re-hydrating...')
           try {
             // Restore the session in Supabase client
@@ -250,9 +350,14 @@ function IndexPopup() {
             } else if (sessionData?.session) {
               console.log('NymAI: Session restored successfully')
               // Immediately update UI to reflect logged-in state
-              setUserEmail(sessionData.session.user.email || sessionData.user?.email || null)
+              const email = sessionData.session?.user?.email || sessionData.user?.email || null
+              setUserEmail(email)
               // Ensure session is saved (in case it was updated)
               await storageArea.set({ nymAiSession: sessionData.session })
+            } else {
+              console.warn('NymAI: setSession returned no session data:', sessionData)
+              // Clear invalid session from storage
+              await storageArea.remove("nymAiSession")
             }
           } catch (rehydrateError: any) {
             console.error('NymAI: Error during session re-hydration:', rehydrateError)
@@ -274,11 +379,16 @@ function IndexPopup() {
           await storageArea.remove("nymAiSession")
         } else {
           const {
-            data: { session }
+            data: { session },
+            error: sessionError
           } = await supabase.auth.getSession()
 
-          if (session) {
-            setUserEmail(session.user.email)
+          if (sessionError) {
+            console.error('NymAI: Error getting session:', sessionError)
+            setUserEmail(null)
+            await storageArea.remove("nymAiSession")
+          } else if (session) {
+            setUserEmail(session.user?.email || null)
             await storageArea.set({ nymAiSession: session })
           } else {
             setUserEmail(null)
@@ -338,15 +448,17 @@ function IndexPopup() {
     loadPopupData()
 
     // Set up the storage listener for real-time updates
-    const storageListener = (changes: any) => {
-      // Listen for isScanning changes
-      if (changes.isScanning) {
-        setIsScanning(changes.isScanning.newValue === true)
-      }
+    // Only set up listener if chrome.storage is available
+    if (chrome?.storage?.onChanged) {
+      const storageListener = (changes: any) => {
+        // Listen for isScanning changes
+        if (changes.isScanning) {
+          setIsScanning(changes.isScanning.newValue === true)
+        }
 
-      // Listen for scan result changes
-      if (changes.lastScanResult) {
-        const newData = changes.lastScanResult.newValue
+        // Listen for scan result changes
+        if (changes.lastScanResult) {
+          const newData = changes.lastScanResult.newValue
         setIsScanning(false) // Stop loading indicator when result arrives
         if (newData) {
           if (newData.error) {
@@ -372,11 +484,18 @@ function IndexPopup() {
         }
       }
     }
-    chrome.storage.onChanged.addListener(storageListener)
 
-    // Cleanup: Remove listener when component unmounts
-    return () => {
-      chrome.storage.onChanged.removeListener(storageListener)
+      chrome.storage.onChanged.addListener(storageListener)
+
+      // Cleanup: Remove listener when component unmounts
+      return () => {
+        if (chrome?.storage?.onChanged) {
+          chrome.storage.onChanged.removeListener(storageListener)
+        }
+      }
+    } else {
+      // No storage available - return empty cleanup function
+      return () => {}
     }
   }, []) // Empty dependency array ensures this runs only once on mount
 
@@ -401,11 +520,16 @@ function IndexPopup() {
               await storageArea.remove("nymAiSession")
             } else {
               const {
-                data: { session }
+                data: { session },
+                error: sessionError
               } = await supabase.auth.getSession()
 
-              if (session) {
-                setUserEmail(session.user.email)
+              if (sessionError) {
+                console.error('NymAI: Error getting session:', sessionError)
+                setUserEmail(null)
+                await storageArea.remove("nymAiSession")
+              } else if (session) {
+                setUserEmail(session.user?.email || null)
                 await storageArea.set({ nymAiSession: session })
               } else {
                 setUserEmail(null)
@@ -674,6 +798,21 @@ function IndexPopup() {
   }
 
   // --- Main Render ---
+  // Show error if storage is not available (check lazily)
+  const storageAreaInstance = getStorageArea()
+  if (!storageAreaInstance) {
+    return (
+      <div className="w-[380px] min-h-[400px] bg-gray-50 font-sans text-gray-900 p-5">
+        <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 text-center">
+          <p className="text-red-800 font-semibold mb-2">Extension Error</p>
+          <p className="text-red-700 text-sm">
+            Storage API is not available. Please reload the extension or restart your browser.
+          </p>
+        </div>
+      </div>
+    )
+  }
+  
   return (
     <div className="w-[380px] min-h-[400px] bg-gray-50 font-sans text-gray-900">
       {/* Header with Branding */}
