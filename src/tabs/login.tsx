@@ -87,6 +87,13 @@ function Login() {
             src={chrome.runtime.getURL('NymAI_full_logo.svg')} 
             alt="NymAI Logo" 
             className="h-12"
+            onError={(e) => {
+              console.error('Failed to load logo. Attempted URL:', chrome.runtime.getURL('NymAI_full_logo.svg'));
+              // Try alternative path
+              const altUrl = chrome.runtime.getURL('assets/NymAI_full_logo.svg');
+              console.error('Trying alternative URL:', altUrl);
+              (e.target as HTMLImageElement).src = altUrl;
+            }}
           />
         </div>
 

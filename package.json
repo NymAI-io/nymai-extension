@@ -55,6 +55,17 @@
           "https://nymai.io/*",
           "http://localhost:*/*"
         ]
-      }
+      },
+      "web_accessible_resources": [
+        {
+          "resources": [
+            "NymAI_full_logo.svg",
+            "NymAI_icon.svg",
+            "assets/NymAI_full_logo.svg",
+            "assets/NymAI_icon.svg"
+          ],
+          "matches": ["<all_urls>"]
+        }
+      ]
     }
 }
