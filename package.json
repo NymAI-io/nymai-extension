@@ -32,40 +32,5 @@
     "entries": {
       "tabs/login": "src/tabs/login.tsx"
     }
-  },
-    "manifest": {
-      "host_permissions": [
-        "https://rpnprnyoylifxxstdxzg.supabase.co/*",
-        "https://nymai-backend.onrender.com/*",
-        "https://nymai-image-scraper.onrender.com/*"
-      ],
-      "content_security_policy": {
-        "extension_pages": "script-src 'self'; object-src 'self';"
-      },
-      "permissions": [
-        "storage",
-        "contextMenus",
-        "activeTab",
-        "scripting",
-        "tabs"
-      ],
-      "externally_connectable": {
-        "matches": [
-          "https://www.nymai.io/*",
-          "https://nymai.io/*",
-          "http://localhost:*/*"
-        ]
-      },
-      "web_accessible_resources": [
-        {
-          "resources": [
-            "NymAI_full_logo.svg",
-            "NymAI_icon.svg",
-            "assets/NymAI_full_logo.svg",
-            "assets/NymAI_icon.svg"
-          ],
-          "matches": ["<all_urls>"]
-        }
-      ]
-    }
+  }
 }
