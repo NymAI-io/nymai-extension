@@ -39,45 +39,9 @@ function IndexPopup() {
     setErrorCode(null)
   }
 
-  // --- Upgrade to Pro function ---
-  const handleUpgrade = async () => {
-    try {
-      const storageData = await storageArea.get("nymAiSession")
-      const session = storageData.nymAiSession
-
-      if (!session || !session.access_token) {
-        setError("You must be logged in to upgrade.")
-        return
-      }
-
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-      const response = await fetch(`${NYMAI_API_BASE_URL}/v1/create-checkout-session`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`
-        },
-        signal: controller.signal
-      })
-      clearTimeout(timeout)
-
-      const data = await response.json()
-
-      if (response.status !== 200) {
-        throw new Error(data.detail || "Failed to create checkout session.")
-      }
-
-      if (data.url) {
-        chrome.tabs.create({ url: data.url })
-      }
-    } catch (e: any) {
-      if (e?.name === "AbortError") {
-        setError("Upgrade failed: request timed out.")
-      } else {
-        setError("Upgrade failed: please try again.")
-      }
-    }
+  // --- Join Pro Waitlist function ---
+  const handleJoinWaitlist = () => {
+    chrome.tabs.create({ url: 'https://tally.so/r/444K1d' })
   }
 
   // --- Function to activate Interactive Selection Mode ---
@@ -533,9 +497,9 @@ function IndexPopup() {
             </div>
             <div className="space-y-2 pt-2">
               <button
-                onClick={handleUpgrade}
+                onClick={handleJoinWaitlist}
                 className="w-full py-2.5 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
-                Upgrade Credits
+                Join the Pro Waitlist
               </button>
               <button
                 onClick={handleStartNewScan}
