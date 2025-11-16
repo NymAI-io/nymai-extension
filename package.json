@@ -2,7 +2,7 @@
   "name": "nymai",
   "displayName": "Nymai",
   "version": "0.0.1",
-  "description": "A basic Plasmo extension.",
+  "description": "Clarity in every click. NymAI is an AI-powered engine that instantly verifies the authenticity and credibility of any text, image, or video.",
   "author": "Plasmo Corp. <foss@plasmo.com>",
   "scripts": {
     "dev": "plasmo dev",
