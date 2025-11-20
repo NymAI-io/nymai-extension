@@ -584,6 +584,30 @@ function IndexPopup() {
         )
       }
 
+      // Special case: 429 error code (Daily limit reached) shows upsell prompt
+      if (errorCode === 429) {
+        return (
+          <div className="mt-4 p-5 bg-yellow-50 border-2 border-yellow-400 text-yellow-900 rounded-lg space-y-4">
+            <div className="text-center">
+              <p className="font-bold text-lg text-yellow-800 mb-2">Daily Limit Reached</p>
+              <p className="text-sm text-yellow-700 leading-relaxed">You've used your 10 free daily scans. Join the Pro Waitlist for unlimited access.</p>
+            </div>
+            <div className="space-y-2 pt-2">
+              <button
+                onClick={handleJoinWaitlist}
+                className="w-full py-2.5 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
+                Join the Pro Waitlist
+              </button>
+              <button
+                onClick={handleStartNewScan}
+                className="w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition-colors">
+                Start New Scan
+              </button>
+            </div>
+          </div>
+        )
+      }
+
       // Generic error display
       return (
         <div className="mt-4 p-4 bg-red-50 border border-red-200 text-red-800 rounded-lg space-y-3">
@@ -716,6 +740,15 @@ function IndexPopup() {
               className="w-full py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition-colors">
               Start New Scan
             </button>
+            <div className="mt-3 text-center">
+              <a
+                href="https://tally.so/r/GxxgYL"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+                Report Issue / Feedback
+              </a>
+            </div>
           </div>
         </div>
       )
