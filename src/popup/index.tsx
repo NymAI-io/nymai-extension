@@ -210,6 +210,32 @@ function IndexPopup() {
     }
   }
 
+  // --- Function to cancel an active scan ---
+  const handleCancelScan = async () => {
+    try {
+      // Immediately reset UI state for instant feedback
+      setIsScanning(false)
+      setError("")
+      setErrorCode(null)
+      setScanResult(null)
+      
+      // Clear the storage result to prevent error from showing
+      const storageAreaInstance = getStorageArea()
+      if (storageAreaInstance) {
+        await storageAreaInstance.remove("lastScanResult")
+      }
+      
+      // Send cancel message to background
+      const response = await chrome.runtime.sendMessage({ action: 'cancel-scan' })
+      if (response?.cancelled) {
+        console.log('Scan cancelled successfully')
+      }
+    } catch (e) {
+      console.error('Error cancelling scan:', e)
+      // Even if message fails, UI is already reset
+    }
+  }
+
   // --- Function to scan YouTube video from the popup ---
   // This now delegates to the background script for consistent behavior
   const handleScanYouTubeVideo = async () => {
@@ -354,15 +380,22 @@ function IndexPopup() {
         const resultData = await storageArea.get("lastScanResult")
         if (resultData.lastScanResult) {
           if (resultData.lastScanResult.error) {
-            // It's an error result
-            if (resultData.lastScanResult.error_code === 429 || resultData.lastScanResult.error_code === 402) {
+            // Skip error display for cancelled scans (499)
+            if (resultData.lastScanResult.error_code === 499) {
+              // Scan was cancelled - reset UI to ready state
+              setScanResult(null)
+              setError("")
+              setErrorCode(null)
+            } else if (resultData.lastScanResult.error_code === 429 || resultData.lastScanResult.error_code === 402) {
               // Credit limit reached (429) or payment required (402)
               setError(resultData.lastScanResult.error)
+              setErrorCode(resultData.lastScanResult.error_code || null)
+              setScanResult(null)
             } else {
               setError("Scan failed: please try again.")
+              setErrorCode(resultData.lastScanResult.error_code || null)
+              setScanResult(null)
             }
-            setErrorCode(resultData.lastScanResult.error_code || null)
-            setScanResult(null)
           } else {
             // It's a successful scan result
             setScanResult(resultData.lastScanResult)
@@ -411,14 +444,21 @@ function IndexPopup() {
         setIsScanning(false) // Stop loading indicator when result arrives
         if (newData) {
           if (newData.error) {
-            // It's an error result
-            if (newData.error_code === 429 || newData.error_code === 402) {
+            // Skip error display for cancelled scans (499)
+            if (newData.error_code === 499) {
+              // Scan was cancelled - reset UI to ready state
+              setScanResult(null)
+              setError("")
+              setErrorCode(null)
+            } else if (newData.error_code === 429 || newData.error_code === 402) {
               setError(newData.error)
+              setErrorCode(newData.error_code || null)
+              setScanResult(null)
             } else {
               setError("Scan failed: please try again.")
+              setErrorCode(newData.error_code || null)
+              setScanResult(null)
             }
-            setErrorCode(newData.error_code || null)
-            setScanResult(null)
           } else {
             // It's a successful scan result
             setScanResult(newData)
@@ -549,6 +589,11 @@ function IndexPopup() {
           <Spinner size="lg" />
           <p className="text-gray-800 font-medium">Analyzing content...</p>
           <p className="text-gray-600 text-xs">This may take a few moments</p>
+          <button
+            onClick={handleCancelScan}
+            className="mt-4 px-4 py-2 bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 hover:border-red-300 font-medium rounded-lg transition-colors shadow-sm">
+            Cancel Request
+          </button>
         </div>
       )
     }
@@ -580,6 +625,15 @@ function IndexPopup() {
                 Start New Scan
               </button>
             </div>
+            <div className="mt-3 text-center">
+              <a
+                href="https://tally.so/r/GxxgYL"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+                Report Issue / Feedback
+              </a>
+            </div>
           </div>
         )
       }
@@ -604,6 +658,15 @@ function IndexPopup() {
                 Start New Scan
               </button>
             </div>
+            <div className="mt-3 text-center">
+              <a
+                href="https://tally.so/r/GxxgYL"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+                Report Issue / Feedback
+              </a>
+            </div>
           </div>
         )
       }
@@ -617,6 +680,15 @@ function IndexPopup() {
             className="w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition-colors">
             Start New Scan
           </button>
+          <div className="text-center">
+            <a
+              href="https://tally.so/r/GxxgYL"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+              Report Issue / Feedback
+            </a>
+          </div>
         </div>
       )
     }
@@ -637,6 +709,15 @@ function IndexPopup() {
                 className="w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg transition-colors">
                 Start New Scan
               </button>
+              <div className="mt-3 text-center">
+                <a
+                  href="https://tally.so/r/GxxgYL"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+                  Report Issue / Feedback
+                </a>
+              </div>
             </div>
           </div>
         )

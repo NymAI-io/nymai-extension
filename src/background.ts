@@ -11,6 +11,9 @@ const RATE_LIMIT_WINDOW_MS = 2500
 let lastScanTimestamp = 0
 const MAX_TEXT_LENGTH = 5000
 
+// Store abort controllers for active scans so they can be cancelled
+let currentAbortController: AbortController | null = null
+
 // Track the login tab ID for proactive tab management
 let loginTabId: number | null = null
 
@@ -118,6 +121,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log("BACKGROUND: Received YouTube URL scan request:", request.url)
     handleYouTubeUrlScan(request.url)
     sendResponse({ success: true })
+  }
+  
+  // Handle cancel scan requests
+  if (request.action === 'cancel-scan') {
+    console.log("BACKGROUND: Received cancel scan request")
+    if (currentAbortController) {
+      currentAbortController.abort()
+      currentAbortController = null
+      console.log("BACKGROUND: Scan cancelled")
+      // Reset UI state - clear result instead of setting error
+      chrome.action.setBadgeText({ text: '' })
+      storageArea.set({ 
+        isScanning: false
+      })
+      // Remove lastScanResult to prevent error from showing
+      storageArea.remove("lastScanResult")
+      sendResponse({ success: true, cancelled: true })
+    } else {
+      sendResponse({ success: false, error: "No active scan to cancel" })
+    }
+    return true
   }
   
   return true // Async response
@@ -313,6 +337,7 @@ async function runFullScan(
 
   try {
     const controller = new AbortController()
+    currentAbortController = controller // Store globally so it can be cancelled
     const timeout = setTimeout(() => controller.abort(), 30000)
     const response = await fetch(endpointUrl, {
       method: "POST",
@@ -324,6 +349,7 @@ async function runFullScan(
       signal: controller.signal
     })
     clearTimeout(timeout)
+    currentAbortController = null // Clear after successful fetch
 
     const rawBody = await response.text()
     const contentType = response.headers.get("content-type") ?? ""
@@ -364,6 +390,14 @@ async function runFullScan(
     console.log("NymAI Scan Complete. Result saved.")
   } catch (e) {
     console.error("NymAI Scan Failed:", e)
+    // Check if this was a user cancellation
+    if (e instanceof DOMException && e.name === "AbortError" && currentAbortController?.signal.aborted) {
+      // Check if it was aborted by user (not timeout) - timeout would have been cleared
+      console.log("NymAI: Scan cancelled by user")
+      // Don't set error - cancellation is handled in the cancel handler
+      currentAbortController = null
+      return // Exit early, state already reset by cancel handler
+    }
     // Save the error to storage so the popup can see it
     const message =
       e instanceof DOMException && e.name === "AbortError"
@@ -372,6 +406,7 @@ async function runFullScan(
     storageArea.set({ lastScanResult: { error: message, error_code: 500 } })
   } finally {
     // Clear badge and scanning state in all cases (success or failure)
+    currentAbortController = null // Ensure it's cleared
     chrome.action.setBadgeText({ text: '' })
     await storageArea.set({ isScanning: false })
   }
@@ -431,6 +466,7 @@ async function handleYouTubeUrlScan(url: string) {
 
   try {
     const controller = new AbortController()
+    currentAbortController = controller // Store globally so it can be cancelled
     const timeout = setTimeout(() => controller.abort(), 30000)
     const response = await fetch(`${NYMAI_API_BASE_URL}/v1/scan/credibility`, {
       method: "POST",
@@ -445,6 +481,7 @@ async function handleYouTubeUrlScan(url: string) {
       signal: controller.signal
     })
     clearTimeout(timeout)
+    currentAbortController = null // Clear after successful fetch
 
     const rawBody = await response.text()
     const contentType = response.headers.get("content-type") ?? ""
@@ -483,6 +520,13 @@ async function handleYouTubeUrlScan(url: string) {
     console.log("NymAI YouTube Scan Complete. Result saved.")
   } catch (e) {
     console.error("NymAI YouTube Scan Failed:", e)
+    // Check if this was a user cancellation
+    if (e instanceof DOMException && e.name === "AbortError" && currentAbortController?.signal.aborted) {
+      console.log("NymAI: YouTube scan cancelled by user")
+      // Don't set error - cancellation is handled in the cancel handler
+      currentAbortController = null
+      return // Exit early, state already reset by cancel handler
+    }
     // Save the error to storage so the popup can see it
     const message =
       e instanceof DOMException && e.name === "AbortError"
@@ -493,6 +537,7 @@ async function handleYouTubeUrlScan(url: string) {
     await storageArea.set({ lastScanResult: { error: message, error_code: 500 } })
   } finally {
     // Clear badge and scanning state in all cases (success or failure)
+    currentAbortController = null // Ensure it's cleared
     chrome.action.setBadgeText({ text: '' })
     await storageArea.set({ isScanning: false })
   }
