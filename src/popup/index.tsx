@@ -355,7 +355,8 @@ function IndexPopup() {
         if (resultData.lastScanResult) {
           if (resultData.lastScanResult.error) {
             // It's an error result
-            if (resultData.lastScanResult.error_code === 402) {
+            if (resultData.lastScanResult.error_code === 429 || resultData.lastScanResult.error_code === 402) {
+              // Credit limit reached (429) or payment required (402)
               setError(resultData.lastScanResult.error)
             } else {
               setError("Scan failed: please try again.")
@@ -411,7 +412,7 @@ function IndexPopup() {
         if (newData) {
           if (newData.error) {
             // It's an error result
-            if (newData.error_code === 402) {
+            if (newData.error_code === 429 || newData.error_code === 402) {
               setError(newData.error)
             } else {
               setError("Scan failed: please try again.")

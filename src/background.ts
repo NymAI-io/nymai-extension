@@ -345,17 +345,16 @@ async function runFullScan(
       )
     }
     
-    // --- THIS IS THE NEW LOGIC ---
-    if (response.status === 402) {
-        // Specifically catch the 402 error
+    // --- Handle credit limit errors (429 = Too Many Requests / Daily limit reached) ---
+    if (response.status === 429 || response.status === 402) {
+        // Backend returns 429 for daily credit limit, but we also handle 402 for compatibility
         // We save *only* the error detail, not the generic "fetch failed"
         storageArea.set({ 
-            lastScanResult: { error: data.detail, error_code: 402 } 
+            lastScanResult: { error: data.detail, error_code: response.status } 
         });
         // Badge will be cleared in finally block
         return; // Stop here
     }
-    // --- END NEW LOGIC ---
 
     if (response.status !== 200) {
       throw new Error(data?.detail || "Backend error")
@@ -466,10 +465,11 @@ async function handleYouTubeUrlScan(url: string) {
       )
     }
     
-    // Handle 402 error specifically (insufficient credits)
-    if (response.status === 402) {
+    // Handle credit limit errors (429 = Too Many Requests / Daily limit reached)
+    if (response.status === 429 || response.status === 402) {
+      // Backend returns 429 for daily credit limit, but we also handle 402 for compatibility
       await storageArea.set({ 
-        lastScanResult: { error: data.detail || "Insufficient credits to perform this scan.", error_code: 402 } 
+        lastScanResult: { error: data.detail || "Daily analysis limit reached. You have used all 10 free analyses for today.", error_code: response.status } 
       })
       return // Badge will be cleared in finally block
     }
