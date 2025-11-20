@@ -675,21 +675,33 @@ function IndexPopup() {
                   {scanResult?.credibility?.claims?.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
                       <p className="text-sm font-semibold text-gray-800">Claims Found</p>
-                      {scanResult.credibility.claims.map((claim: any, index: number) => (
-                        <div key={index} className="bg-white rounded-lg p-3 border-l-4 border-yellow-400 border border-gray-200">
-                          <p className="text-sm text-gray-900 font-medium mb-1">{claim.claim}</p>
-                          <div className="flex items-start space-x-2">
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                              claim.is_true === true ? "bg-green-100 text-green-700" :
-                              claim.is_true === false ? "bg-red-100 text-red-700" :
-                              "bg-yellow-100 text-yellow-700"
-                            }`}>
-                              {claim.is_true === true ? "TRUE" : claim.is_true === false ? "FALSE" : "MISLEADING"}
-                            </span>
-                            <p className="text-xs text-gray-600 flex-1">{claim.evidence}</p>
+                      {scanResult.credibility.claims.map((claim: any, index: number) => {
+                        // Normalize claim status to lowercase string for case-insensitive comparison
+                        // Handles both boolean (legacy) and string (new) formats
+                        const status = typeof claim.is_true === 'string' 
+                          ? claim.is_true.toLowerCase() 
+                          : claim.is_true === true ? 'true' : claim.is_true === false ? 'false' : 'misleading'
+                        
+                        const isTrue = status === 'true'
+                        const isFalse = status === 'false'
+                        const isMisleading = status === 'misleading'
+                        
+                        return (
+                          <div key={index} className="bg-white rounded-lg p-3 border-l-4 border-yellow-400 border border-gray-200">
+                            <p className="text-sm text-gray-900 font-medium mb-1">{claim.claim}</p>
+                            <div className="flex items-start space-x-2">
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                                isTrue ? "bg-green-100 text-green-700" :
+                                isFalse ? "bg-red-100 text-red-700" :
+                                "bg-yellow-100 text-yellow-700"
+                              }`}>
+                                {isTrue ? "TRUE" : isFalse ? "FALSE" : "MISLEADING"}
+                              </span>
+                              <p className="text-xs text-gray-600 flex-1">{claim.evidence}</p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>
