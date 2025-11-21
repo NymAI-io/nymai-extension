@@ -2,10 +2,30 @@
 import React, { useState } from "react"
 import { createClient } from "@supabase/supabase-js"
 
+// --- SUPABASE CONFIGURATION ---
+// SECURITY NOTE: These environment variables are intentionally public
+// PLASMO_PUBLIC_* variables are bundled into the extension and visible to users
+// - SUPABASE_ANON_KEY: Designed to be public, protected by Row Level Security (RLS)
+// - SUPABASE_URL: Public endpoint, no sensitive data exposed
 const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL as string
 const SUPABASE_ANON_KEY = process.env.PLASMO_PUBLIC_SUPABASE_ANON_KEY as string
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-const storageArea = chrome.storage.session ?? chrome.storage.local
+
+// SECURITY FIX: Use session storage only (no local storage fallback)
+let storageArea: chrome.storage.StorageArea
+if (chrome.storage.session) {
+  storageArea = chrome.storage.session
+} else {
+  console.error('NymAI: chrome.storage.session not available. Session storage is required for security.')
+  // Use a no-op storage area that throws errors to prevent accidental use
+  storageArea = {
+    get: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
+    set: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
+    remove: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
+    clear: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
+    getBytesInUse: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') }
+  } as chrome.storage.StorageArea
+}
 
 interface LoginFormProps {
   onLoginSuccess: () => void

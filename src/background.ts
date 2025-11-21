@@ -1,12 +1,35 @@
 // src/background.ts
 import { createClient } from "@supabase/supabase-js"
 
-// --- COPY KEYS FROM YOUR POPUP.TSX ---
+// --- SUPABASE CONFIGURATION ---
+// SECURITY NOTE: These environment variables are intentionally public
+// PLASMO_PUBLIC_* variables are bundled into the extension and visible to users
+// - SUPABASE_ANON_KEY: Designed to be public, protected by Row Level Security (RLS)
+// - SUPABASE_URL: Public endpoint, no sensitive data exposed
+// - NYMAI_API_BASE_URL: Public API endpoint (protected by authentication)
 const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL as string
 const SUPABASE_KEY = process.env.PLASMO_PUBLIC_SUPABASE_ANON_KEY as string
 const NYMAI_API_BASE_URL = process.env.PLASMO_PUBLIC_NYMAI_API_BASE_URL as string
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
-const storageArea = chrome.storage.session ?? chrome.storage.local
+
+// SECURITY FIX: Use session storage only (no local storage fallback)
+// Session storage is cleared when browser closes, reducing token exposure risk
+// If session storage is not available, we'll check and fail gracefully at runtime
+let storageArea: chrome.storage.StorageArea
+if (chrome.storage.session) {
+  storageArea = chrome.storage.session
+} else {
+  // This should not happen in Chrome 102+, but fail gracefully if it does
+  console.error('NymAI: chrome.storage.session not available. Session storage is required for security.')
+  // Use a no-op storage area that throws errors to prevent accidental use
+  storageArea = {
+    get: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
+    set: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
+    remove: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
+    clear: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
+    getBytesInUse: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') }
+  } as chrome.storage.StorageArea
+}
 const RATE_LIMIT_WINDOW_MS = 2500
 let lastScanTimestamp = 0
 const MAX_TEXT_LENGTH = 5000
@@ -127,6 +150,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'cancel-scan') {
     console.log("BACKGROUND: Received cancel scan request")
     if (currentAbortController) {
+      // Set cancellation flag before aborting to prevent error from being set
+      storageArea.set({ scanCancelled: true })
       currentAbortController.abort()
       currentAbortController = null
       console.log("BACKGROUND: Scan cancelled")
@@ -137,6 +162,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })
       // Remove lastScanResult to prevent error from showing
       storageArea.remove("lastScanResult")
+      // Clear cancellation flag after a short delay to allow catch blocks to check it
+      setTimeout(() => {
+        storageArea.remove("scanCancelled")
+      }, 1000)
       sendResponse({ success: true, cancelled: true })
     } else {
       sendResponse({ success: false, error: "No active scan to cancel" })
@@ -391,7 +420,8 @@ async function runFullScan(
   } catch (e) {
     console.error("NymAI Scan Failed:", e)
     // Check if this was a user cancellation
-    if (e instanceof DOMException && e.name === "AbortError" && currentAbortController?.signal.aborted) {
+    const cancellationCheck = await storageArea.get("scanCancelled")
+    if (cancellationCheck.scanCancelled || (e instanceof DOMException && e.name === "AbortError" && currentAbortController?.signal.aborted)) {
       // Check if it was aborted by user (not timeout) - timeout would have been cleared
       console.log("NymAI: Scan cancelled by user")
       // Don't set error - cancellation is handled in the cancel handler
@@ -521,7 +551,8 @@ async function handleYouTubeUrlScan(url: string) {
   } catch (e) {
     console.error("NymAI YouTube Scan Failed:", e)
     // Check if this was a user cancellation
-    if (e instanceof DOMException && e.name === "AbortError" && currentAbortController?.signal.aborted) {
+    const cancellationCheck = await storageArea.get("scanCancelled")
+    if (cancellationCheck.scanCancelled || (e instanceof DOMException && e.name === "AbortError" && currentAbortController?.signal.aborted)) {
       console.log("NymAI: YouTube scan cancelled by user")
       // Don't set error - cancellation is handled in the cancel handler
       currentAbortController = null

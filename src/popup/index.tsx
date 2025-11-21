@@ -4,7 +4,12 @@ import React, { useState, useEffect } from "react"
 import { createClient } from "@supabase/supabase-js"
 import Spinner from "../components/Spinner"
 
-// --- CONFIGURE YOUR KEYS (from your .env file) ---
+// --- SUPABASE CONFIGURATION ---
+// SECURITY NOTE: These environment variables are intentionally public
+// PLASMO_PUBLIC_* variables are bundled into the extension and visible to users
+// - SUPABASE_ANON_KEY: Designed to be public, protected by Row Level Security (RLS)
+// - SUPABASE_URL: Public endpoint, no sensitive data exposed
+// - NYMAI_API_BASE_URL: Public API endpoint (protected by authentication)
 const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL as string
 const SUPABASE_ANON_KEY = process.env.PLASMO_PUBLIC_SUPABASE_ANON_KEY as string
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -40,21 +45,18 @@ function getStorageArea(): chrome.storage.StorageArea | null {
       return null
     }
     
-    // Try session storage first (available in Chrome 102+)
+    // SECURITY FIX: Use session storage only (no local storage fallback)
+    // Session storage is cleared when browser closes, reducing token exposure risk
     if (chrome.storage.session) {
       _storageArea = chrome.storage.session
       console.log('NymAI: Using chrome.storage.session')
       return _storageArea
     }
     
-    // Fallback to local storage (always available if storage permission is granted)
-    if (chrome.storage.local) {
-      _storageArea = chrome.storage.local
-      console.log('NymAI: Using chrome.storage.local')
-      return _storageArea
-    }
-    
-    console.error('NymAI: Neither session nor local storage is available')
+    // Fail gracefully if session storage is not available
+    // Do not fall back to local storage for security reasons
+    console.error('NymAI: chrome.storage.session is required but not available')
+    console.error('NymAI: Session storage is required for security. Please update Chrome or check extension permissions.')
     console.error('NymAI: chrome.storage keys:', Object.keys(chrome.storage || {}))
     _storageArea = null
     return null
@@ -96,6 +98,7 @@ function IndexPopup() {
   const [errorCode, setErrorCode] = useState<number | null>(null)
   const [currentUrl, setCurrentUrl] = useState<string | null>(null)
   const [isYouTubeVideo, setIsYouTubeVideo] = useState(false)
+  const [isCancelled, setIsCancelled] = useState(false) // Track if scan was cancelled
 
   // Open the dedicated login page on nymai.io
   const openLoginPage = () => {
@@ -176,30 +179,19 @@ function IndexPopup() {
         messageSent = await sendActivationMessage()
       }
 
-      // If still failed after retry, the content script needs to be injected
-      if (!messageSent && chrome.scripting) {
-        try {
-          // Plasmo content scripts are auto-injected, but we can ensure they're ready
-          // by reloading the tab's content script context
-          // Note: In production, Plasmo handles this automatically
-          // This is a fallback for edge cases
-          
-          // Try one more time after a brief delay
-          await new Promise(resolve => setTimeout(resolve, 200))
-          messageSent = await sendActivationMessage()
-          
-          if (!messageSent) {
-            setError("Unable to connect to the page. Please reload the page and try again.")
-            return
-          }
-        } catch (error) {
-          console.error("Error ensuring content script:", error)
-          setError("Please reload the page to enable selection mode on this page.")
+      // Note: Content script is already loaded (matches: <all_urls>)
+      // The script is designed to be minimal and only activates when receiving
+      // the 'activate-selection-mode' message, so security risk is mitigated
+      // If message fails, content script might not be ready yet
+      if (!messageSent) {
+        // Wait a bit longer and try once more
+        await new Promise(resolve => setTimeout(resolve, 300))
+        messageSent = await sendActivationMessage()
+        
+        if (!messageSent) {
+          setError("Unable to connect to the page. Please reload the page and try again.")
           return
         }
-      } else if (!messageSent) {
-        setError("Please reload the page to enable selection mode on this page.")
-        return
       }
 
       // Success! Close the popup so user can interact with the page
@@ -213,16 +205,23 @@ function IndexPopup() {
   // --- Function to cancel an active scan ---
   const handleCancelScan = async () => {
     try {
+      // Set cancellation flag immediately to prevent any errors from showing
+      setIsCancelled(true)
+      
       // Immediately reset UI state for instant feedback
       setIsScanning(false)
       setError("")
       setErrorCode(null)
       setScanResult(null)
       
-      // Clear the storage result to prevent error from showing
+      // Set cancellation flag and clear storage to prevent error from showing
       const storageAreaInstance = getStorageArea()
       if (storageAreaInstance) {
+        // Set flag first, then clear results
+        await storageAreaInstance.set({ scanCancelled: true })
         await storageAreaInstance.remove("lastScanResult")
+        // Also clear isScanning to prevent any race conditions
+        await storageAreaInstance.set({ isScanning: false })
       }
       
       // Send cancel message to background
@@ -230,9 +229,18 @@ function IndexPopup() {
       if (response?.cancelled) {
         console.log('Scan cancelled successfully')
       }
+      
+      // Keep cancellation flag for a bit longer to catch any late errors
+      setTimeout(async () => {
+        setIsCancelled(false)
+        if (storageAreaInstance) {
+          await storageAreaInstance.remove("scanCancelled")
+        }
+      }, 2000)
     } catch (e) {
       console.error('Error cancelling scan:', e)
       // Even if message fails, UI is already reset
+      setIsCancelled(false)
     }
   }
 
@@ -376,37 +384,49 @@ function IndexPopup() {
           setIsScanning(true)
         }
 
-        // Load the last scan result from storage
-        const resultData = await storageArea.get("lastScanResult")
-        if (resultData.lastScanResult) {
-          if (resultData.lastScanResult.error) {
-            // Skip error display for cancelled scans (499)
-            if (resultData.lastScanResult.error_code === 499) {
-              // Scan was cancelled - reset UI to ready state
-              setScanResult(null)
-              setError("")
-              setErrorCode(null)
-            } else if (resultData.lastScanResult.error_code === 429 || resultData.lastScanResult.error_code === 402) {
-              // Credit limit reached (429) or payment required (402)
-              setError(resultData.lastScanResult.error)
-              setErrorCode(resultData.lastScanResult.error_code || null)
-              setScanResult(null)
-            } else {
-              setError("Scan failed: please try again.")
-              setErrorCode(resultData.lastScanResult.error_code || null)
-              setScanResult(null)
-            }
-          } else {
-            // It's a successful scan result
-            setScanResult(resultData.lastScanResult)
-            setError("")
-            setErrorCode(null)
-          }
-        } else {
-          // No scan result found - clear state for Mission Control UI
+        // Check if scan was cancelled - if so, ignore any stored errors
+        const cancellationData = await storageArea.get("scanCancelled")
+        if (cancellationData.scanCancelled) {
+          // Scan was cancelled - reset UI to ready state
           setScanResult(null)
           setError("")
           setErrorCode(null)
+          // Clear the cancellation flag and any stored error
+          await storageArea.remove("scanCancelled")
+          await storageArea.remove("lastScanResult")
+        } else {
+          // Load the last scan result from storage
+          const resultData = await storageArea.get("lastScanResult")
+          if (resultData.lastScanResult) {
+            if (resultData.lastScanResult.error) {
+              // Skip error display for cancelled scans (499)
+              if (resultData.lastScanResult.error_code === 499) {
+                // Scan was cancelled - reset UI to ready state
+                setScanResult(null)
+                setError("")
+                setErrorCode(null)
+              } else if (resultData.lastScanResult.error_code === 429 || resultData.lastScanResult.error_code === 402) {
+                // Credit limit reached (429) or payment required (402)
+                setError(resultData.lastScanResult.error)
+                setErrorCode(resultData.lastScanResult.error_code || null)
+                setScanResult(null)
+              } else {
+                setError("Scan failed: please try again.")
+                setErrorCode(resultData.lastScanResult.error_code || null)
+                setScanResult(null)
+              }
+            } else {
+              // It's a successful scan result
+              setScanResult(resultData.lastScanResult)
+              setError("")
+              setErrorCode(null)
+            }
+          } else {
+            // No scan result found - clear state for Mission Control UI
+            setScanResult(null)
+            setError("")
+            setErrorCode(null)
+          }
         }
 
         // Get current tab URL
@@ -441,38 +461,58 @@ function IndexPopup() {
         // Listen for scan result changes
         if (changes.lastScanResult) {
           const newData = changes.lastScanResult.newValue
-        setIsScanning(false) // Stop loading indicator when result arrives
-        if (newData) {
-          if (newData.error) {
-            // Skip error display for cancelled scans (499)
-            if (newData.error_code === 499) {
-              // Scan was cancelled - reset UI to ready state
+          setIsScanning(false) // Stop loading indicator when result arrives
+          
+          // If scan was cancelled, ignore any errors
+          if (isCancelled) {
+            setScanResult(null)
+            setError("")
+            setErrorCode(null)
+            return
+          }
+          
+          // Check if scan was cancelled in storage - if so, ignore any errors
+          storageArea.get("scanCancelled").then((result: any) => {
+            if (result.scanCancelled || isCancelled) {
+              // Scan was cancelled - reset UI to ready state and ignore errors
               setScanResult(null)
               setError("")
               setErrorCode(null)
-            } else if (newData.error_code === 429 || newData.error_code === 402) {
-              setError(newData.error)
-              setErrorCode(newData.error_code || null)
-              setScanResult(null)
-            } else {
-              setError("Scan failed: please try again.")
-              setErrorCode(newData.error_code || null)
-              setScanResult(null)
+              return
             }
-          } else {
-            // It's a successful scan result
-            setScanResult(newData)
-            setError("")
-            setErrorCode(null)
-          }
-        } else {
-          // lastScanResult was cleared
-          setScanResult(null)
-          setError("")
-          setErrorCode(null)
+            
+            if (newData) {
+              if (newData.error) {
+                // Skip error display for cancelled scans (499)
+                if (newData.error_code === 499) {
+                  // Scan was cancelled - reset UI to ready state
+                  setScanResult(null)
+                  setError("")
+                  setErrorCode(null)
+                } else if (newData.error_code === 429 || newData.error_code === 402) {
+                  setError(newData.error)
+                  setErrorCode(newData.error_code || null)
+                  setScanResult(null)
+                } else {
+                  setError("Scan failed: please try again.")
+                  setErrorCode(newData.error_code || null)
+                  setScanResult(null)
+                }
+              } else {
+                // It's a successful scan result
+                setScanResult(newData)
+                setError("")
+                setErrorCode(null)
+              }
+            } else {
+              // lastScanResult was cleared
+              setScanResult(null)
+              setError("")
+              setErrorCode(null)
+            }
+          })
         }
       }
-    }
 
       chrome.storage.onChanged.addListener(storageListener)
 

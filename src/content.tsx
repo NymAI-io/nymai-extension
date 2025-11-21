@@ -1,6 +1,11 @@
 // src/content.tsx
 import type { PlasmoCSConfig } from "plasmo"
 
+// SECURITY NOTE: Content script runs on all URLs for selection mode functionality
+// However, the script is designed to be minimal and only activates when:
+// 1. User explicitly activates selection mode via popup
+// 2. Extension ID injection on nymai.io pages (trusted domain)
+// The script does not execute any code until explicitly activated by user action
 export const config: PlasmoCSConfig = {
   matches: ["<all_urls>"],
   all_frames: false // Only run in the main frame to avoid conflicts
@@ -94,27 +99,36 @@ if (document.body) {
   })
 }
 
-// Inject extension ID into pages that match nymai.io (for OAuth flow)
-// This must run immediately, before the page's React code loads
-// Use chrome.runtime.id directly (available in content scripts) for synchronous injection
+// SECURITY FIX: Inject extension ID only on trusted nymai.io domain
+// This is necessary for OAuth flow communication between landing page and extension
+// Limited to nymai.io only to prevent fingerprinting on other sites
 function injectExtensionId() {
-  if (window.location.hostname === 'www.nymai.io' || window.location.hostname === 'nymai.io' || window.location.hostname === 'localhost') {
-    try {
-      // chrome.runtime.id is available synchronously in content scripts
-      const extensionId = chrome.runtime.id
-      if (extensionId) {
-        // Inject the extension ID into the page's window object immediately
-        // Use Object.defineProperty to ensure it's set before any page scripts run
-        Object.defineProperty(window, 'NYMAI_EXTENSION_ID', {
-          value: extensionId,
-          writable: true,
-          configurable: true
-        })
-        console.log('NymAI: Extension ID injected into page:', extensionId)
-      }
-    } catch (error) {
-      console.warn('NymAI: Could not inject extension ID:', error)
+  const hostname = window.location.hostname
+  // Only inject on trusted domains (nymai.io and localhost for development)
+  const isTrustedDomain = hostname === 'www.nymai.io' || 
+                         hostname === 'nymai.io' || 
+                         hostname === 'localhost'
+  
+  if (!isTrustedDomain) {
+    return // Don't inject on untrusted domains - prevents fingerprinting
+  }
+  
+  try {
+    // chrome.runtime.id is available synchronously in content scripts
+    const extensionId = chrome.runtime.id
+    if (extensionId) {
+      // SECURITY: Make property non-writable and non-configurable after setting
+      // This prevents page scripts from modifying or deleting the extension ID
+      // Use Object.defineProperty to ensure it's set before any page scripts run
+      Object.defineProperty(window, 'NYMAI_EXTENSION_ID', {
+        value: extensionId,
+        writable: false,      // Prevent modification
+        configurable: false   // Prevent deletion
+      })
+      console.log('NymAI: Extension ID injected into trusted page:', hostname)
     }
+  } catch (error) {
+    console.warn('NymAI: Could not inject extension ID:', error)
   }
 }
 
