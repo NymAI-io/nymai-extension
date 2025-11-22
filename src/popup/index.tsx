@@ -688,9 +688,12 @@ function IndexPopup() {
               error: userError
             } = await supabase.auth.getUser()
 
+            const storageAreaInstance = getStorageArea()
             if (userError || !user) {
               setUserEmail(null)
-              await storageArea.remove("nymAiSession")
+              if (storageAreaInstance) {
+                await storageAreaInstance.remove("nymAiSession")
+              }
             } else {
               const {
                 data: { session },
@@ -700,13 +703,19 @@ function IndexPopup() {
               if (sessionError) {
                 console.error('NymAI: Error getting session:', sessionError)
                 setUserEmail(null)
-                await storageArea.remove("nymAiSession")
+                if (storageAreaInstance) {
+                  await storageAreaInstance.remove("nymAiSession")
+                }
               } else if (session) {
                 setUserEmail(session.user?.email || null)
-                await storageArea.set({ nymAiSession: session })
+                if (storageAreaInstance) {
+                  await storageAreaInstance.set({ nymAiSession: session })
+                }
               } else {
                 setUserEmail(null)
-                await storageArea.remove("nymAiSession")
+                if (storageAreaInstance) {
+                  await storageAreaInstance.remove("nymAiSession")
+                }
               }
             }
           } catch (e: any) {
