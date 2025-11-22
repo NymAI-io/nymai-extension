@@ -547,6 +547,8 @@ function IndexPopup() {
     fetchCredits()
   }, [userEmail]) // Re-fetch credits when userEmail changes
 
+  // --- Set up storage listener for real-time updates ---
+  useEffect(() => {
     // Set up the storage listener for real-time updates
     // Only set up listener if chrome.storage is available
     if (chrome?.storage?.onChanged) {
@@ -561,6 +563,33 @@ function IndexPopup() {
           const newData = changes.lastScanResult.newValue
           setIsScanning(false) // Stop loading indicator when result arrives
           
+          // Refresh credits after scan completes (success or error)
+          if (userEmail) {
+            // Fetch updated credits
+            const storageAreaInstance = getStorageArea()
+            if (storageAreaInstance) {
+              storageAreaInstance.get("nymAiSession").then((storage: any) => {
+                const session = storage?.nymAiSession
+                if (session?.access_token) {
+                  fetch(`${NYMAI_API_BASE_URL}/v1/user/profile`, {
+                    method: "GET",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${session.access_token}`
+                    }
+                  })
+                    .then(res => res.ok ? res.json() : null)
+                    .then(data => {
+                      if (data) {
+                        setCredits(data.daily_credits_remaining || 0)
+                      }
+                    })
+                    .catch(err => console.error("Error refreshing credits:", err))
+                }
+              })
+            }
+          }
+          
           // If scan was cancelled, ignore any errors
           if (isCancelled) {
             setScanResult(null)
@@ -570,8 +599,10 @@ function IndexPopup() {
           }
           
           // Check if scan was cancelled in storage - if so, ignore any errors
-          storageArea.get("scanCancelled").then((result: any) => {
-            if (result.scanCancelled || isCancelled) {
+          const storageAreaInstance = getStorageArea()
+          if (storageAreaInstance) {
+            storageAreaInstance.get("scanCancelled").then((result: any) => {
+              if (result.scanCancelled || isCancelled) {
               // Scan was cancelled - reset UI to ready state and ignore errors
               setScanResult(null)
               setError("")
