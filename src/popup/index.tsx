@@ -461,7 +461,7 @@ function IndexPopup() {
           } else {
             // Load the last scan result from storage
             const resultData = await storageAreaInstance.get("lastScanResult")
-          if (resultData.lastScanResult) {
+            if (resultData.lastScanResult) {
             if (resultData.lastScanResult.error) {
               // Skip error display for cancelled scans (499)
               if (resultData.lastScanResult.error_code === 499) {
