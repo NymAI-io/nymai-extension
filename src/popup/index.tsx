@@ -679,8 +679,6 @@ function IndexPopup() {
     const messageListener = (message: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
       if (message.type === 'NYMAI_LOGIN_COMPLETE') {
         console.log('NymAI: Received login complete message, refreshing popup state')
-        // Close login form if it's open
-        setShowLoginForm(false)
         // Re-run the data loading function to refresh the UI with new login state
         async function refreshPopupData() {
           try {
