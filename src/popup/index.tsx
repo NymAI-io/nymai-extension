@@ -464,36 +464,37 @@ function IndexPopup() {
             // Load the last scan result from storage
             const resultData = await storageAreaInstance.get("lastScanResult")
             if (resultData.lastScanResult) {
-            if (resultData.lastScanResult.error) {
-              // Skip error display for cancelled scans (499)
-              if (resultData.lastScanResult.error_code === 499) {
-                // Scan was cancelled - reset UI to ready state
-                setScanResult(null)
+              if (resultData.lastScanResult.error) {
+                // Skip error display for cancelled scans (499)
+                if (resultData.lastScanResult.error_code === 499) {
+                  // Scan was cancelled - reset UI to ready state
+                  setScanResult(null)
+                  setError("")
+                  setErrorCode(null)
+                } else if (resultData.lastScanResult.error_code === 429 || resultData.lastScanResult.error_code === 402) {
+                  // Credit limit reached (429) or payment required (402)
+                  setError(resultData.lastScanResult.error)
+                  setErrorCode(resultData.lastScanResult.error_code || null)
+                  setScanResult(null)
+                } else {
+                  setError("Scan failed: please try again.")
+                  setErrorCode(resultData.lastScanResult.error_code || null)
+                  setScanResult(null)
+                }
+              } else {
+                // It's a successful scan result
+                setScanResult(resultData.lastScanResult)
                 setError("")
                 setErrorCode(null)
-              } else if (resultData.lastScanResult.error_code === 429 || resultData.lastScanResult.error_code === 402) {
-                // Credit limit reached (429) or payment required (402)
-                setError(resultData.lastScanResult.error)
-                setErrorCode(resultData.lastScanResult.error_code || null)
-                setScanResult(null)
-              } else {
-                setError("Scan failed: please try again.")
-                setErrorCode(resultData.lastScanResult.error_code || null)
-                setScanResult(null)
               }
             } else {
-              // It's a successful scan result
-              setScanResult(resultData.lastScanResult)
+              // No scan result found - clear state for Mission Control UI
+              setScanResult(null)
               setError("")
               setErrorCode(null)
+              // Clear badge when showing main screen (no scan result)
+              clearBadge()
             }
-          } else {
-            // No scan result found - clear state for Mission Control UI
-            setScanResult(null)
-            setError("")
-            setErrorCode(null)
-            // Clear badge when showing main screen (no scan result)
-            clearBadge()
           }
         }
 
@@ -628,34 +629,34 @@ function IndexPopup() {
               }
               
               if (newData) {
-              if (newData.error) {
-                // Skip error display for cancelled scans (499)
-                if (newData.error_code === 499) {
-                  // Scan was cancelled - reset UI to ready state
-                  setScanResult(null)
+                if (newData.error) {
+                  // Skip error display for cancelled scans (499)
+                  if (newData.error_code === 499) {
+                    // Scan was cancelled - reset UI to ready state
+                    setScanResult(null)
+                    setError("")
+                    setErrorCode(null)
+                  } else if (newData.error_code === 429 || newData.error_code === 402) {
+                    setError(newData.error)
+                    setErrorCode(newData.error_code || null)
+                    setScanResult(null)
+                  } else {
+                    setError("Scan failed: please try again.")
+                    setErrorCode(newData.error_code || null)
+                    setScanResult(null)
+                  }
+                } else {
+                  // It's a successful scan result
+                  setScanResult(newData)
                   setError("")
                   setErrorCode(null)
-                } else if (newData.error_code === 429 || newData.error_code === 402) {
-                  setError(newData.error)
-                  setErrorCode(newData.error_code || null)
-                  setScanResult(null)
-                } else {
-                  setError("Scan failed: please try again.")
-                  setErrorCode(newData.error_code || null)
-                  setScanResult(null)
                 }
               } else {
-                // It's a successful scan result
-                setScanResult(newData)
+                // lastScanResult was cleared
+                setScanResult(null)
                 setError("")
                 setErrorCode(null)
               }
-            } else {
-              // lastScanResult was cleared
-              setScanResult(null)
-              setError("")
-              setErrorCode(null)
-            }
           })
         }
       }
