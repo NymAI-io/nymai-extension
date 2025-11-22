@@ -603,14 +603,14 @@ function IndexPopup() {
           if (storageAreaInstance) {
             storageAreaInstance.get("scanCancelled").then((result: any) => {
               if (result.scanCancelled || isCancelled) {
-              // Scan was cancelled - reset UI to ready state and ignore errors
-              setScanResult(null)
-              setError("")
-              setErrorCode(null)
-              return
-            }
-            
-            if (newData) {
+                // Scan was cancelled - reset UI to ready state and ignore errors
+                setScanResult(null)
+                setError("")
+                setErrorCode(null)
+                return
+              }
+              
+              if (newData) {
               if (newData.error) {
                 // Skip error display for cancelled scans (499)
                 if (newData.error_code === 499) {
