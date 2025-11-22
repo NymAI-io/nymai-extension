@@ -131,6 +131,9 @@ function IndexPopup() {
   // --- Function to activate Interactive Selection Mode ---
   const activateSelectionMode = async (scanType: 'credibility' | 'authenticity') => {
     try {
+      // Clear badge when starting a new scan
+      clearBadge()
+      
       setError("") // Clear any previous errors
       setErrorCode(null) // Clear any previous error codes (e.g., 402 upgrade prompts)
       
@@ -205,6 +208,9 @@ function IndexPopup() {
   // --- Function to cancel an active scan ---
   const handleCancelScan = async () => {
     try {
+      // Clear badge when cancelling scan
+      clearBadge()
+      
       // Set cancellation flag immediately to prevent any errors from showing
       setIsCancelled(true)
       
@@ -217,28 +223,43 @@ function IndexPopup() {
       // Set cancellation flag and clear storage to prevent error from showing
       const storageAreaInstance = getStorageArea()
       if (storageAreaInstance) {
-        // Set flag first, then clear results
-        await storageAreaInstance.set({ scanCancelled: true })
-        await storageAreaInstance.remove("lastScanResult")
-        // Also clear isScanning to prevent any race conditions
-        await storageAreaInstance.set({ isScanning: false })
+        try {
+          // Set flag first, then clear results
+          await storageAreaInstance.set({ scanCancelled: true })
+          await storageAreaInstance.remove("lastScanResult")
+          // Also clear isScanning to prevent any race conditions
+          await storageAreaInstance.set({ isScanning: false })
+        } catch (storageError) {
+          console.error('NymAI: Error updating storage during cancel:', storageError)
+        }
       }
       
-      // Send cancel message to background
-      const response = await chrome.runtime.sendMessage({ action: 'cancel-scan' })
-      if (response?.cancelled) {
-        console.log('Scan cancelled successfully')
+      // Send cancel message to background with error handling
+      try {
+        const response = await chrome.runtime.sendMessage({ action: 'cancel-scan' })
+        if (response?.cancelled) {
+          console.log('NymAI: Scan cancelled successfully')
+        } else if (chrome.runtime.lastError) {
+          console.warn('NymAI: Error sending cancel message:', chrome.runtime.lastError.message)
+        }
+      } catch (messageError) {
+        console.error('NymAI: Error sending cancel message:', messageError)
+        // Continue anyway - UI is already reset
       }
       
       // Keep cancellation flag for a bit longer to catch any late errors
       setTimeout(async () => {
         setIsCancelled(false)
         if (storageAreaInstance) {
-          await storageAreaInstance.remove("scanCancelled")
+          try {
+            await storageAreaInstance.remove("scanCancelled")
+          } catch (e) {
+            console.warn('NymAI: Error removing cancellation flag:', e)
+          }
         }
       }, 2000)
     } catch (e) {
-      console.error('Error cancelling scan:', e)
+      console.error('NymAI: Unexpected error cancelling scan:', e)
       // Even if message fails, UI is already reset
       setIsCancelled(false)
     }
@@ -251,6 +272,9 @@ function IndexPopup() {
       setError("Could not get the current tab's URL.")
       return
     }
+
+    // Clear badge when starting a new scan
+    clearBadge()
 
     // Set local state to show spinner immediately
     // The popup will automatically update when the result is saved to storage
@@ -283,6 +307,15 @@ function IndexPopup() {
     }
   }
 
+  // --- Helper function to clear badge ---
+  const clearBadge = () => {
+    try {
+      chrome.action.setBadgeText({ text: '' })
+    } catch (e) {
+      console.warn('NymAI: Failed to clear badge:', e)
+    }
+  }
+
   // --- Function to clear scan results and return to Mission Control ---
   const handleStartNewScan = async () => {
     // Clear component state
@@ -290,6 +323,9 @@ function IndexPopup() {
     setError("")
     setErrorCode(null)
     setIsScanning(false)
+    
+    // Clear badge when returning to main screen
+    clearBadge()
     
     // Clear persisted state in chrome.storage.local (if available)
     const storageAreaInstance = getStorageArea()
@@ -443,6 +479,8 @@ function IndexPopup() {
             setScanResult(null)
             setError("")
             setErrorCode(null)
+            // Clear badge when showing main screen (no scan result)
+            clearBadge()
           }
         }
 
@@ -644,8 +682,8 @@ function IndexPopup() {
       return (
         <div className="flex flex-col items-center justify-center py-12 space-y-4">
           <Spinner size="lg" />
-          <p className="text-gray-800 font-medium">Analyzing content...</p>
-          <p className="text-gray-600 text-xs">This may take a few moments</p>
+          <div className="text-gray-800 font-medium">Analyzing content...</div>
+          <div className="text-gray-600 text-xs">This may take a few moments</div>
           <button
             onClick={handleCancelScan}
             className="mt-4 px-4 py-2 bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 hover:border-red-300 font-medium rounded-lg transition-colors shadow-sm">
@@ -667,8 +705,8 @@ function IndexPopup() {
         return (
           <div className="mt-4 p-5 bg-yellow-50 border-2 border-yellow-400 text-yellow-900 rounded-lg space-y-4">
             <div className="text-center">
-              <p className="font-bold text-lg text-yellow-800 mb-2">Insufficient Credits</p>
-              <p className="text-sm text-yellow-700 leading-relaxed">{error}</p>
+              <div className="font-bold text-lg text-yellow-800 mb-2">Insufficient Credits</div>
+              <div className="text-sm text-yellow-700 leading-relaxed">{error}</div>
             </div>
             <div className="space-y-2 pt-2">
               <button
@@ -903,9 +941,9 @@ function IndexPopup() {
               className="w-full py-3 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
               Scan this YouTube Video
             </button>
-            <p className="text-xs text-gray-600 text-center mt-3">
+            <div className="text-xs text-gray-600 text-center mt-3">
               Or use the buttons below to scan other elements
-            </p>
+            </div>
           </div>
         )}
         
@@ -921,9 +959,9 @@ function IndexPopup() {
             className="w-full py-3 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
             Check Authenticity
           </button>
-          <p className="text-xs text-gray-600 text-center mt-2">
+          <div className="text-xs text-gray-600 text-center mt-2">
             Or right-click on text/images for quick scans
-          </p>
+          </div>
         </div>
       </div>
     )
@@ -936,10 +974,10 @@ function IndexPopup() {
     return (
       <div className="w-[380px] min-h-[400px] bg-gray-50 font-sans text-gray-900 p-5">
         <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 text-center">
-          <p className="text-red-800 font-semibold mb-2">Extension Error</p>
-          <p className="text-red-700 text-sm">
+          <div className="text-red-800 font-semibold mb-2">Extension Error</div>
+          <div className="text-red-700 text-sm">
             Storage API is not available. Please reload the extension or restart your browser.
-          </p>
+          </div>
         </div>
       </div>
     )
@@ -983,9 +1021,9 @@ function IndexPopup() {
           <div className="text-center space-y-2">
             <div className="flex items-center justify-center space-x-2">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <p className="text-sm text-gray-700">
+              <div className="text-sm text-gray-700">
                 Logged in as <span className="text-green-600 font-medium">{userEmail}</span>
-              </p>
+              </div>
             </div>
             <button
               onClick={signOut}
@@ -1003,8 +1041,8 @@ function IndexPopup() {
           renderBody()
         ) : (
           /* Show message when not logged in */
-          <div className="text-center py-8 text-gray-500 text-sm">
-            Please log in to use NymAI
+          <div className="text-center py-8">
+            <div className="text-gray-500 text-sm">Please log in to use NymAI</div>
           </div>
         )}
       </div>
