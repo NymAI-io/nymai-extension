@@ -43,15 +43,41 @@ let loginTabId: number | null = null
 // Keep service worker alive during scans by maintaining active connections
 // MV3 service workers can be suspended, which aborts fetch requests
 let activeConnections: Set<chrome.runtime.Port> = new Set()
+let keepAliveIntervals: Map<chrome.runtime.Port, NodeJS.Timeout> = new Map()
 
 // Listen for connections to keep service worker alive
 chrome.runtime.onConnect.addListener((port) => {
-  console.log('NymAI: Connection opened to keep service worker alive')
+  const portName = port.name || 'unknown'
+  console.log(`NymAI: Connection opened (${portName}) to keep service worker alive`)
   activeConnections.add(port)
   
+  // Send periodic pings to keep the connection active
+  // This prevents Chrome from suspending the service worker during long requests
+  const pingInterval = setInterval(() => {
+    try {
+      if (port.name === 'keep-alive') {
+        // Send a ping message to keep the connection alive
+        port.postMessage({ type: 'ping', timestamp: Date.now() })
+        console.log('NymAI: Keep-alive ping sent on port')
+      }
+    } catch (e) {
+      // Port may be disconnected, clear the interval
+      console.warn('NymAI: Failed to send keep-alive ping:', e)
+      clearInterval(pingInterval)
+      keepAliveIntervals.delete(port)
+    }
+  }, 20000) // Every 20 seconds to reset Chrome's service worker timer
+  
+  keepAliveIntervals.set(port, pingInterval)
+  
   port.onDisconnect.addListener(() => {
-    console.log('NymAI: Connection closed')
+    console.log(`NymAI: Connection closed (${portName})`)
     activeConnections.delete(port)
+    const interval = keepAliveIntervals.get(port)
+    if (interval) {
+      clearInterval(interval)
+      keepAliveIntervals.delete(port)
+    }
   })
 })
 
@@ -150,8 +176,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'precision-path-scan') {
     const requestedScanType = (request.scanType || request.mode || "credibility") as 'credibility' | 'authenticity'
     console.log("BACKGROUND: Received Precision Path scan request:", requestedScanType, "Payload type:", request.content?.content_type)
-    runFullScan(request.content, requestedScanType)
+    // Process scan request directly in background (popup may be closed)
+    // Results will be stored in chrome.storage.session and badge will be updated
+    runFullScan(request.content, requestedScanType).catch((error) => {
+      console.error("BACKGROUND: Error processing scan request:", error)
+    })
+    // Send response immediately (scan runs asynchronously)
     sendResponse({ success: true })
+    return true // Indicate we will send response asynchronously
   }
   
   // Handle YouTube URL scan requests from popup
@@ -379,22 +411,36 @@ async function runFullScan(
 
   const endpointUrl = `${NYMAI_API_BASE_URL}${endpointPath}`
 
-  // Keep service worker alive during scan by writing to storage periodically
+  // Keep service worker alive by writing to storage periodically
   // MV3 service workers can be suspended after ~5 seconds of inactivity
-  // Writing to storage every 3 seconds prevents suspension during long requests
+  // Writing to storage every 2 seconds prevents suspension during long requests
+  // More frequent writes ensure the service worker stays active even during Render cold starts
+  // Note: We don't create a self-connecting port here because that causes "Receiving end does not exist" errors
+  // Storage writes are sufficient to keep the service worker alive
   const keepAliveInterval = setInterval(async () => {
     try {
+      // Write to storage to prevent service worker suspension
       await storageArea.set({ _keepAlive: Date.now() })
-      console.log('NymAI: Keep-alive ping sent')
+      // Also trigger a small async operation to keep the event loop active
+      await new Promise(resolve => setTimeout(resolve, 0))
+      console.log('NymAI: Keep-alive storage ping sent')
     } catch (e) {
-      console.warn('NymAI: Failed to keep service worker alive:', e)
+      console.warn('NymAI: Failed to keep service worker alive via storage:', e)
     }
-  }, 3000) // Every 3 seconds (before 5s suspension threshold)
+  }, 2000) // Every 2 seconds (more frequent to prevent suspension)
 
   try {
     const controller = new AbortController()
     currentAbortController = controller // Store globally so it can be cancelled
-    const timeout = setTimeout(() => controller.abort(), 30000)
+    // Increased timeout to 120 seconds to allow for Render cold starts (can take 30-60s)
+    const timeout = setTimeout(() => {
+      console.warn('NymAI: Request timeout after 120 seconds, aborting')
+      controller.abort()
+    }, 120000)
+    
+    // Start the fetch request
+    // The fetch itself should keep the service worker alive, but we also have storage keep-alive as backup
+    console.log('NymAI: Starting fetch request to', endpointUrl)
     const response = await fetch(endpointUrl, {
       method: "POST",
       headers: {
@@ -402,7 +448,9 @@ async function runFullScan(
         Authorization: `Bearer ${realToken}`
       },
       body: JSON.stringify(sanitizedPayload),
-      signal: controller.signal
+      signal: controller.signal,
+      // Keep the connection alive - this helps prevent service worker suspension
+      keepalive: true
     })
     clearTimeout(timeout)
     currentAbortController = null // Clear after successful fetch
@@ -442,8 +490,11 @@ async function runFullScan(
       throw new Error(data?.detail || "Backend error")
     }
     // 6. Success! Save the result to local storage
-    storageArea.set({ lastScanResult: data })
+    await storageArea.set({ lastScanResult: data })
     console.log("NymAI Scan Complete. Result saved.")
+    // Set badge to indicate scan is complete (user should open popup to see results)
+    chrome.action.setBadgeText({ text: '✓' })
+    chrome.action.setBadgeBackgroundColor({ color: '#10b981' }) // Green color for success
   } catch (e) {
     console.error("NymAI Scan Failed:", e)
     // Check if this was a user cancellation
@@ -455,33 +506,61 @@ async function runFullScan(
       currentAbortController = null
       return // Exit early, state already reset by cancel handler
     }
+    // Determine the error type
+    let errorMessage = "Scan failed due to an unexpected error. Please try again."
+    let errorCode = 500
+    
+    if (e instanceof DOMException && e.name === "AbortError") {
+      // Check if it was a timeout or service worker suspension
+      if (currentAbortController?.signal.aborted) {
+        errorMessage = "The request timed out. Please try again."
+        errorCode = 408
+      } else {
+        // Likely service worker suspension
+        errorMessage = "The connection was interrupted. This may happen during long scans. Please try again."
+        errorCode = 499
+      }
+    } else if (e instanceof Error) {
+      // Check for network errors that indicate disconnection
+      if (e.message.includes("Failed to fetch") || e.message.includes("NetworkError") || e.message.includes("Client disconnected")) {
+        errorMessage = "The connection was interrupted. This may happen during long scans. Please try again."
+        errorCode = 499
+      } else {
+        errorMessage = e.message
+      }
+    }
+    
     // Save the error to storage so the popup can see it
-    const message =
-      e instanceof DOMException && e.name === "AbortError"
-        ? "The request timed out. Please try again."
-        : "Scan failed due to an unexpected error. Please try again."
-    storageArea.set({ lastScanResult: { error: message, error_code: 500 } })
+    await storageArea.set({ lastScanResult: { error: errorMessage, error_code: errorCode } })
   } finally {
     // Clear keep-alive interval
     clearInterval(keepAliveInterval)
-    // Clear badge and scanning state in all cases (success or failure)
+    // Clear scanning state (but keep badge if scan was successful - it will show ✓)
     currentAbortController = null // Ensure it's cleared
-    chrome.action.setBadgeText({ text: '' })
+    // Only clear badge on error/cancellation (success badge is set above)
+    const lastResult = await storageArea.get("lastScanResult")
+    if (lastResult.lastScanResult?.error) {
+      // Error occurred - clear badge
+      chrome.action.setBadgeText({ text: '' })
+    }
+    // If no error, badge will remain showing ✓ to indicate completion
     await storageArea.set({ isScanning: false })
   }
 }
 
 // Handle YouTube URL scans initiated from the popup
 async function handleYouTubeUrlScan(url: string) {
-  // Keep service worker alive during scan by writing to storage periodically
+  // Keep service worker alive by writing to storage periodically
   // MV3 service workers can be suspended after ~5 seconds of inactivity
   // Writing to storage every 3 seconds prevents suspension during long requests
+  // Note: We don't create a self-connecting port here because that causes "Receiving end does not exist" errors
+  // The popup's connection (if open) and storage writes are sufficient to keep the service worker alive
   const keepAliveInterval = setInterval(async () => {
     try {
       await storageArea.set({ _keepAlive: Date.now() })
-      console.log('NymAI: Keep-alive ping sent (YouTube scan)')
+      console.log('NymAI: Keep-alive storage ping sent (YouTube scan)')
     } catch (e) {
-      console.warn('NymAI: Failed to keep service worker alive:', e)
+      console.warn('NymAI: Failed to keep service worker alive via storage:', e)
     }
   }, 3000) // Every 3 seconds (before 5s suspension threshold)
   
@@ -543,7 +622,15 @@ async function handleYouTubeUrlScan(url: string) {
     // Perform the actual scan
     const controller = new AbortController()
     currentAbortController = controller // Store globally so it can be cancelled
-    const timeout = setTimeout(() => controller.abort(), 30000)
+    // Increased timeout to 120 seconds to allow for Render cold starts (can take 30-60s)
+    const timeout = setTimeout(() => {
+      console.warn('NymAI: YouTube scan timeout after 120 seconds, aborting')
+      controller.abort()
+    }, 120000)
+    
+    // Start the fetch request
+    // The fetch itself should keep the service worker alive, but we also have storage keep-alive as backup
+    console.log('NymAI: Starting YouTube scan fetch request')
     const response = await fetch(`${NYMAI_API_BASE_URL}/v1/scan/credibility`, {
       method: "POST",
       headers: {
@@ -554,7 +641,9 @@ async function handleYouTubeUrlScan(url: string) {
         content_type: "video",
         content_data: sanitizedUrl
       }),
-      signal: controller.signal
+      signal: controller.signal,
+      // Keep the connection alive
+      keepalive: true
     })
     clearTimeout(timeout)
     currentAbortController = null // Clear after successful fetch
@@ -596,6 +685,7 @@ async function handleYouTubeUrlScan(url: string) {
     console.log("NymAI YouTube Scan Complete. Result saved.")
   } catch (e) {
     console.error("NymAI YouTube Scan Failed:", e)
+    
     // Check if this was a user cancellation
     const cancellationCheck = await storageArea.get("scanCancelled")
     if (cancellationCheck.scanCancelled || (e instanceof DOMException && e.name === "AbortError" && currentAbortController?.signal.aborted)) {
@@ -604,20 +694,45 @@ async function handleYouTubeUrlScan(url: string) {
       currentAbortController = null
       return // Exit early, state already reset by cancel handler
     }
+    
+    // Determine the error type
+    let errorMessage = "Scan failed due to an unexpected error. Please try again."
+    let errorCode = 500
+    
+    if (e instanceof DOMException && e.name === "AbortError") {
+      // Check if it was a timeout or service worker suspension
+      if (currentAbortController?.signal.aborted) {
+        errorMessage = "The request timed out. Please try again."
+        errorCode = 408
+      } else {
+        // Likely service worker suspension
+        errorMessage = "The connection was interrupted. This may happen during long scans. Please try again."
+        errorCode = 499
+      }
+    } else if (e instanceof Error) {
+      // Check for network errors that indicate disconnection
+      if (e.message.includes("Failed to fetch") || e.message.includes("NetworkError") || e.message.includes("Client disconnected")) {
+        errorMessage = "The connection was interrupted. This may happen during long scans. Please try again."
+        errorCode = 499
+      } else {
+        errorMessage = e.message
+      }
+    }
+    
     // Save the error to storage so the popup can see it
-    const message =
-      e instanceof DOMException && e.name === "AbortError"
-        ? "The request timed out. Please try again."
-        : e instanceof Error
-        ? e.message
-        : "Scan failed due to an unexpected error. Please try again."
-    await storageArea.set({ lastScanResult: { error: message, error_code: 500 } })
+    await storageArea.set({ lastScanResult: { error: errorMessage, error_code: errorCode } })
   } finally {
     // Clear keep-alive interval
     clearInterval(keepAliveInterval)
-    // Clear badge and scanning state in all cases (success or failure)
+    // Clear scanning state (but keep badge if scan was successful - it will show ✓)
     currentAbortController = null // Ensure it's cleared
-    chrome.action.setBadgeText({ text: '' })
+    // Only clear badge on error/cancellation (success badge is set above)
+    const lastResult = await storageArea.get("lastScanResult")
+    if (lastResult.lastScanResult?.error) {
+      // Error occurred - clear badge
+      chrome.action.setBadgeText({ text: '' })
+    }
+    // If no error, badge will remain showing ✓ to indicate completion
     await storageArea.set({ isScanning: false })
   }
 }
