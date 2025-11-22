@@ -91,6 +91,7 @@ const REQUEST_TIMEOUT_MS = 30000
 function IndexPopup() {
   // State management for the hybrid UI
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [credits, setCredits] = useState<number | null>(null) // User's credit balance
   const [scanResult, setScanResult] = useState<any>(null)
   const [loading, setLoading] = useState(true) // Start in loading state
   const [isScanning, setIsScanning] = useState(false) // Track active scan operations
@@ -498,6 +499,53 @@ function IndexPopup() {
     }
 
     loadPopupData()
+  }, [])
+
+  // --- Fetch user credits on load and when user logs in ---
+  useEffect(() => {
+    async function fetchCredits() {
+      if (!userEmail) {
+        // User not logged in, clear credits
+        setCredits(null)
+        return
+      }
+
+      try {
+        // Get session token from storage
+        const storageAreaInstance = getStorageArea()
+        if (!storageAreaInstance) {
+          return
+        }
+
+        const storage = await storageAreaInstance.get("nymAiSession")
+        const session = storage?.nymAiSession
+
+        if (!session || !session.access_token) {
+          return
+        }
+
+        // Fetch user profile with credits
+        const response = await fetch(`${NYMAI_API_BASE_URL}/v1/user/profile`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`
+          }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setCredits(data.daily_credits_remaining || 0)
+        } else {
+          console.error("Failed to fetch credits:", response.status)
+        }
+      } catch (e: any) {
+        console.error("Error fetching credits:", e)
+      }
+    }
+
+    fetchCredits()
+  }, [userEmail]) // Re-fetch credits when userEmail changes
 
     // Set up the storage listener for real-time updates
     // Only set up listener if chrome.storage is available
@@ -934,7 +982,7 @@ function IndexPopup() {
             <button
               onClick={handleScanYouTubeVideo}
               className="w-full py-3 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
-              Scan this YouTube Video
+              Scan Video (5 ⚡)
             </button>
             <div className="text-xs text-gray-600 text-center mt-3">
               Or use the buttons below to scan other elements
@@ -947,12 +995,12 @@ function IndexPopup() {
           <button
             onClick={() => activateSelectionMode('credibility')}
             className="w-full py-3 bg-brand-accent hover:bg-brand-accentDark text-white font-semibold rounded-lg transition-colors shadow-lg">
-            Check Credibility
+            Check Credibility (1 ⚡)
           </button>
           <button
             onClick={() => activateSelectionMode('authenticity')}
             className="w-full py-3 bg-brand-primary hover:bg-brand-primaryDark text-white font-semibold rounded-lg transition-colors shadow-lg">
-            Check Authenticity
+            Check Authenticity (1 ⚡)
           </button>
           <div className="text-xs text-gray-600 text-center mt-2">
             Or right-click on text/images for quick scans
