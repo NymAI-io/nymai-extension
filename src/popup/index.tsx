@@ -1062,11 +1062,22 @@ function IndexPopup() {
           </div>
         ) : (
           <div className="text-center space-y-2">
-            <div className="flex items-center justify-center space-x-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <div className="text-sm text-gray-700">
-                Logged in as <span className="text-green-600 font-medium">{userEmail}</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-center space-x-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <div className="text-sm text-gray-700">
+                  Logged in as <span className="text-green-600 font-medium">{userEmail}</span>
+                </div>
               </div>
+              {credits !== null && (
+                <div className="flex items-center justify-center">
+                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                    credits >= 2 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                  }`}>
+                    ⚡ {credits} Credits
+                  </span>
+                </div>
+              )}
             </div>
             <button
               onClick={signOut}
