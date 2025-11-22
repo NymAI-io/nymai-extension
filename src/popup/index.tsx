@@ -303,6 +303,23 @@ function IndexPopup() {
     }
   }
 
+  // --- Keep service worker alive while popup is open ---
+  useEffect(() => {
+    // Open a persistent connection to keep the service worker alive
+    // This prevents the service worker from being suspended during long-running scans
+    const port = chrome.runtime.connect({ name: 'popup-keepalive' })
+    console.log('NymAI: Popup opened connection to keep service worker alive')
+    
+    port.onDisconnect.addListener(() => {
+      console.log('NymAI: Popup connection closed')
+    })
+    
+    // Cleanup: close connection when popup closes
+    return () => {
+      port.disconnect()
+    }
+  }, [])
+
   // --- Data Fetching: Load scan results from chrome.storage.local ---
   useEffect(() => {
     async function loadPopupData() {

@@ -40,6 +40,21 @@ let currentAbortController: AbortController | null = null
 // Track the login tab ID for proactive tab management
 let loginTabId: number | null = null
 
+// Keep service worker alive during scans by maintaining active connections
+// MV3 service workers can be suspended, which aborts fetch requests
+let activeConnections: Set<chrome.runtime.Port> = new Set()
+
+// Listen for connections to keep service worker alive
+chrome.runtime.onConnect.addListener((port) => {
+  console.log('NymAI: Connection opened to keep service worker alive')
+  activeConnections.add(port)
+  
+  port.onDisconnect.addListener(() => {
+    console.log('NymAI: Connection closed')
+    activeConnections.delete(port)
+  })
+})
+
 type SanitizedPayload = {
   content_type: string
   content_data: string
@@ -364,6 +379,18 @@ async function runFullScan(
 
   const endpointUrl = `${NYMAI_API_BASE_URL}${endpointPath}`
 
+  // Keep service worker alive during scan by writing to storage periodically
+  // MV3 service workers can be suspended after ~5 seconds of inactivity
+  // Writing to storage every 3 seconds prevents suspension during long requests
+  const keepAliveInterval = setInterval(async () => {
+    try {
+      await storageArea.set({ _keepAlive: Date.now() })
+      console.log('NymAI: Keep-alive ping sent')
+    } catch (e) {
+      console.warn('NymAI: Failed to keep service worker alive:', e)
+    }
+  }, 3000) // Every 3 seconds (before 5s suspension threshold)
+
   try {
     const controller = new AbortController()
     currentAbortController = controller // Store globally so it can be cancelled
@@ -435,6 +462,8 @@ async function runFullScan(
         : "Scan failed due to an unexpected error. Please try again."
     storageArea.set({ lastScanResult: { error: message, error_code: 500 } })
   } finally {
+    // Clear keep-alive interval
+    clearInterval(keepAliveInterval)
     // Clear badge and scanning state in all cases (success or failure)
     currentAbortController = null // Ensure it's cleared
     chrome.action.setBadgeText({ text: '' })
@@ -444,57 +473,74 @@ async function runFullScan(
 
 // Handle YouTube URL scans initiated from the popup
 async function handleYouTubeUrlScan(url: string) {
-  const now = Date.now()
-  if (now - lastScanTimestamp < RATE_LIMIT_WINDOW_MS) {
-    await storageArea.set({
-      lastScanResult: { error: "Please wait a moment before starting another scan.", error_code: 429 }
-    })
-    return
-  }
-
-  // Set badge and scanning state early to provide immediate feedback
-  chrome.action.setBadgeText({ text: '...' })
-  chrome.action.setBadgeBackgroundColor({ color: '#4fd1c5' })
-  await storageArea.set({ isScanning: true })
-
-  lastScanTimestamp = now
-
-  // Validate URL
-  if (!url || !url.includes('youtube.com/watch')) {
-    chrome.action.setBadgeText({ text: '' })
-    await storageArea.set({
-      lastScanResult: { error: "Invalid YouTube URL.", error_code: 400 },
-      isScanning: false
-    })
-    return
-  }
-
-  // Sanitize the URL
-  const sanitizedUrl = sanitizeUrl(url)
-  if (!sanitizedUrl) {
-    chrome.action.setBadgeText({ text: '' })
-    await storageArea.set({
-      lastScanResult: { error: "Unable to process the YouTube URL. Please ensure it's a valid HTTPS URL.", error_code: 400 },
-      isScanning: false
-    })
-    return
-  }
-
-  // Get the session from storage
-  const storageData = await storageArea.get("nymAiSession")
-  const session = storageData.nymAiSession
-  if (!session || !session.access_token) {
-    console.error("NymAI Error: No user session found. Please log in.")
-    chrome.action.setBadgeText({ text: '' })
-    await storageArea.set({ 
-      lastScanResult: { error: "You must be logged in to scan.", error_code: 401 },
-      isScanning: false 
-    })
-    return
-  }
-  const realToken = session.access_token
-
+  // Keep service worker alive during scan by writing to storage periodically
+  // MV3 service workers can be suspended after ~5 seconds of inactivity
+  // Writing to storage every 3 seconds prevents suspension during long requests
+  const keepAliveInterval = setInterval(async () => {
+    try {
+      await storageArea.set({ _keepAlive: Date.now() })
+      console.log('NymAI: Keep-alive ping sent (YouTube scan)')
+    } catch (e) {
+      console.warn('NymAI: Failed to keep service worker alive:', e)
+    }
+  }, 3000) // Every 3 seconds (before 5s suspension threshold)
+  
   try {
+    const now = Date.now()
+    if (now - lastScanTimestamp < RATE_LIMIT_WINDOW_MS) {
+      clearInterval(keepAliveInterval)
+      await storageArea.set({
+        lastScanResult: { error: "Please wait a moment before starting another scan.", error_code: 429 }
+      })
+      return
+    }
+
+    // Set badge and scanning state early to provide immediate feedback
+    chrome.action.setBadgeText({ text: '...' })
+    chrome.action.setBadgeBackgroundColor({ color: '#4fd1c5' })
+    await storageArea.set({ isScanning: true })
+
+    lastScanTimestamp = now
+
+    // Validate URL
+    if (!url || !url.includes('youtube.com/watch')) {
+      clearInterval(keepAliveInterval)
+      chrome.action.setBadgeText({ text: '' })
+      await storageArea.set({
+        lastScanResult: { error: "Invalid YouTube URL.", error_code: 400 },
+        isScanning: false
+      })
+      return
+    }
+
+    // Sanitize the URL
+    const sanitizedUrl = sanitizeUrl(url)
+    if (!sanitizedUrl) {
+      clearInterval(keepAliveInterval)
+      chrome.action.setBadgeText({ text: '' })
+      await storageArea.set({
+        lastScanResult: { error: "Unable to process the YouTube URL. Please ensure it's a valid HTTPS URL.", error_code: 400 },
+        isScanning: false
+      })
+      return
+    }
+
+    // Get the session from storage
+    const storageData = await storageArea.get("nymAiSession")
+    const session = storageData.nymAiSession
+    if (!session || !session.access_token) {
+      clearInterval(keepAliveInterval)
+      console.error("NymAI Error: No user session found. Please log in.")
+      chrome.action.setBadgeText({ text: '' })
+      await storageArea.set({ 
+        lastScanResult: { error: "You must be logged in to scan.", error_code: 401 },
+        isScanning: false 
+      })
+      return
+    }
+    const realToken = session.access_token
+
+    // Perform the actual scan
     const controller = new AbortController()
     currentAbortController = controller // Store globally so it can be cancelled
     const timeout = setTimeout(() => controller.abort(), 30000)
@@ -567,6 +613,8 @@ async function handleYouTubeUrlScan(url: string) {
         : "Scan failed due to an unexpected error. Please try again."
     await storageArea.set({ lastScanResult: { error: message, error_code: 500 } })
   } finally {
+    // Clear keep-alive interval
+    clearInterval(keepAliveInterval)
     // Clear badge and scanning state in all cases (success or failure)
     currentAbortController = null // Ensure it's cleared
     chrome.action.setBadgeText({ text: '' })
