@@ -399,7 +399,9 @@ function IndexPopup() {
           } catch (rehydrateError: any) {
             console.error('NymAI: Error during session re-hydration:', rehydrateError)
             // If re-hydration fails, clear the invalid session
-            await storageArea.remove("nymAiSession")
+            if (storageAreaInstance) {
+              await storageAreaInstance.remove("nymAiSession")
+            }
           }
         } else {
           console.log('NymAI: No saved session found in storage')
