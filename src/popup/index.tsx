@@ -377,18 +377,24 @@ function IndexPopup() {
             if (sessionError) {
               console.error('NymAI: Failed to restore session:', sessionError)
               // If session is invalid, remove it from storage
-              await storageArea.remove("nymAiSession")
+              if (storageAreaInstance) {
+                await storageAreaInstance.remove("nymAiSession")
+              }
             } else if (sessionData?.session) {
               console.log('NymAI: Session restored successfully')
               // Immediately update UI to reflect logged-in state
               const email = sessionData.session?.user?.email || sessionData.user?.email || null
               setUserEmail(email)
               // Ensure session is saved (in case it was updated)
-              await storageArea.set({ nymAiSession: sessionData.session })
+              if (storageAreaInstance) {
+                await storageAreaInstance.set({ nymAiSession: sessionData.session })
+              }
             } else {
               console.warn('NymAI: setSession returned no session data:', sessionData)
               // Clear invalid session from storage
-              await storageArea.remove("nymAiSession")
+              if (storageAreaInstance) {
+                await storageAreaInstance.remove("nymAiSession")
+              }
             }
           } catch (rehydrateError: any) {
             console.error('NymAI: Error during session re-hydration:', rehydrateError)
@@ -407,7 +413,9 @@ function IndexPopup() {
 
         if (userError || !user) {
           setUserEmail(null)
-          await storageArea.remove("nymAiSession")
+          if (storageAreaInstance) {
+            await storageAreaInstance.remove("nymAiSession")
+          }
         } else {
           const {
             data: { session },
@@ -417,35 +425,42 @@ function IndexPopup() {
           if (sessionError) {
             console.error('NymAI: Error getting session:', sessionError)
             setUserEmail(null)
-            await storageArea.remove("nymAiSession")
+            if (storageAreaInstance) {
+              await storageAreaInstance.remove("nymAiSession")
+            }
           } else if (session) {
             setUserEmail(session.user?.email || null)
-            await storageArea.set({ nymAiSession: session })
+            if (storageAreaInstance) {
+              await storageAreaInstance.set({ nymAiSession: session })
+            }
           } else {
             setUserEmail(null)
-            await storageArea.remove("nymAiSession")
+            if (storageAreaInstance) {
+              await storageAreaInstance.remove("nymAiSession")
+            }
           }
         }
 
         // Check if a scan is in progress
-        const scanningData = await storageArea.get("isScanning")
-        if (scanningData.isScanning === true) {
-          setIsScanning(true)
-        }
+        if (storageAreaInstance) {
+          const scanningData = await storageAreaInstance.get("isScanning")
+          if (scanningData.isScanning === true) {
+            setIsScanning(true)
+          }
 
-        // Check if scan was cancelled - if so, ignore any stored errors
-        const cancellationData = await storageArea.get("scanCancelled")
-        if (cancellationData.scanCancelled) {
-          // Scan was cancelled - reset UI to ready state
-          setScanResult(null)
-          setError("")
-          setErrorCode(null)
-          // Clear the cancellation flag and any stored error
-          await storageArea.remove("scanCancelled")
-          await storageArea.remove("lastScanResult")
-        } else {
-          // Load the last scan result from storage
-          const resultData = await storageArea.get("lastScanResult")
+          // Check if scan was cancelled - if so, ignore any stored errors
+          const cancellationData = await storageAreaInstance.get("scanCancelled")
+          if (cancellationData.scanCancelled) {
+            // Scan was cancelled - reset UI to ready state
+            setScanResult(null)
+            setError("")
+            setErrorCode(null)
+            // Clear the cancellation flag and any stored error
+            await storageAreaInstance.remove("scanCancelled")
+            await storageAreaInstance.remove("lastScanResult")
+          } else {
+            // Load the last scan result from storage
+            const resultData = await storageAreaInstance.get("lastScanResult")
           if (resultData.lastScanResult) {
             if (resultData.lastScanResult.error) {
               // Skip error display for cancelled scans (499)
