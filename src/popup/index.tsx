@@ -131,9 +131,6 @@ function IndexPopup() {
   // --- Function to activate Interactive Selection Mode ---
   const activateSelectionMode = async (scanType: 'credibility' | 'authenticity') => {
     try {
-      // Clear badge when starting a new scan
-      clearBadge()
-      
       setError("") // Clear any previous errors
       setErrorCode(null) // Clear any previous error codes (e.g., 402 upgrade prompts)
       
@@ -273,11 +270,9 @@ function IndexPopup() {
       return
     }
 
-    // Clear badge when starting a new scan
-    clearBadge()
-
     // Set local state to show spinner immediately
     // The popup will automatically update when the result is saved to storage
+    // Note: Badge will be set to "..." by background script when scan starts
     setIsScanning(true)
     setError("")
     setScanResult(null)
