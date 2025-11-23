@@ -1015,6 +1015,14 @@ function IndexPopup() {
               className="w-full py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition-colors">
               Start New Scan
             </button>
+            
+            {/* Liability Disclaimer */}
+            <div className="py-2 text-center">
+              <p className="text-[10px] text-gray-400">
+                <em>NymAI isn't perfect. Please use this as a guide, not the final verdict.</em>
+              </p>
+            </div>
+            
             <div className="mt-3 text-center">
               <a
                 href="https://tally.so/r/GxxgYL"

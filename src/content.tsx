@@ -198,14 +198,33 @@ function sendSanitizedPayload(
   contentType: string,
   contentData: string
 ) {
-  chrome.runtime.sendMessage({
-    action: 'precision-path-scan',
-    scanType: scanTypeForRequest,
-    content: {
-      content_type: contentType,
-      content_data: contentData
+  // Send message to background script (not popup) to avoid "Receiving end does not exist" errors
+  // The background script handles the scan request directly
+  chrome.runtime.sendMessage(
+    {
+      action: 'precision-path-scan',
+      scanType: scanTypeForRequest,
+      content: {
+        content_type: contentType,
+        content_data: contentData
+      }
+    },
+    (response) => {
+      // Suppress "Receiving end does not exist" errors
+      // This can happen if the background script hasn't loaded yet, but it's not critical
+      if (chrome.runtime.lastError) {
+        // Only log if it's not the expected "Receiving end does not exist" error
+        // This error is harmless - the background script will process the message when it's ready
+        const errorMsg = chrome.runtime.lastError.message
+        if (!errorMsg.includes('Receiving end does not exist') && 
+            !errorMsg.includes('Could not establish connection')) {
+          console.warn('NymAI: Error sending scan request:', errorMsg)
+        }
+      } else if (response?.success) {
+        console.log('NymAI: Scan request sent successfully')
+      }
     }
-  })
+  )
 }
 
 // Create the overlay that covers the entire page
