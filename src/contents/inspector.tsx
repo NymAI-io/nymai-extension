@@ -248,79 +248,98 @@ const Inspector = () => {
                 </div>
             )}
 
-            {/* Result Card */}
+            {/* Result Sidebar - Slide In */}
             {verdict && !loading && (
-                <div className="w-[480px] bg-zinc-950/95 backdrop-blur-xl border border-zinc-800 rounded-xl shadow-2xl overflow-hidden text-zinc-100">
+                <div className="fixed top-0 right-0 h-screen w-[400px] z-[2147483647] bg-zinc-950 border-l border-zinc-800 shadow-2xl overflow-y-auto animate-slide-in-right">
 
                     {/* Header */}
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800/50 bg-zinc-900/30">
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500" />
-                            <span className="text-sm font-semibold tracking-tight text-zinc-300">NymAI Analysis</span>
+                    <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-zinc-950/95 backdrop-blur border-b border-zinc-800">
+                        <div className="flex items-center gap-3">
+                            <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500" />
+                            <span className="text-base font-semibold tracking-tight text-white">Analysis Report</span>
                         </div>
                         <button
                             onClick={() => setVerdict(null)}
-                            className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                            className="p-2 -mr-2 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded-full transition-colors"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 18 18" /></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 18 18" /></svg>
                         </button>
                     </div>
 
-                    {/* Summary Section */}
-                    <div className="px-6 py-5 border-b border-zinc-800/50">
-                        <p className="text-lg font-medium leading-snug text-white">
-                            {verdict.summary}
-                        </p>
-                    </div>
+                    <div className="p-6 space-y-8">
 
-                    {/* The Grid (Dual-Stat) */}
-                    <div className="grid grid-cols-2 divide-x divide-zinc-800/50">
-
-                        {/* Left: Authenticity */}
-                        <div className="p-5 space-y-3">
+                        {/* Hero Section: Authenticity */}
+                        <div className="space-y-4">
                             <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Media Check</span>
+                                <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Authenticity</h3>
                                 <Badge label={verdict.authenticity.status} color={getAuthColor(verdict.authenticity.status)} />
                             </div>
-                            <div className="min-h-[60px]">
-                                <p className="text-sm text-zinc-400 leading-relaxed line-clamp-4">
-                                    {verdict.authenticity.explanation}
-                                </p>
+
+                            <div className="relative pt-2">
+                                <div className="flex items-end justify-between mb-2">
+                                    <span className="text-3xl font-bold text-white">{verdict.authenticity.confidence}%</span>
+                                    <span className="text-sm text-zinc-400 mb-1">Confidence</span>
+                                </div>
+                                <div className="w-full bg-zinc-900 rounded-full h-1.5 overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full ${getAuthColor(verdict.authenticity.status).split(' ')[2]}`}
+                                        style={{ width: `${verdict.authenticity.confidence}%` }}
+                                    />
+                                </div>
                             </div>
-                            {/* Confidence Bar */}
-                            <div className="w-full bg-zinc-800 rounded-full h-1 mt-2">
-                                <div
-                                    className={`h-1 rounded-full ${getAuthColor(verdict.authenticity.status).split(' ')[2]}`}
-                                    style={{ width: `${verdict.authenticity.confidence}%` }}
-                                />
-                            </div>
+
+                            <p className="text-sm text-zinc-300 leading-relaxed">
+                                {verdict.authenticity.explanation}
+                            </p>
                         </div>
 
-                        {/* Right: Credibility */}
-                        <div className="p-5 space-y-3">
+                        <div className="h-px bg-zinc-900" />
+
+                        {/* Hero Section: Credibility */}
+                        <div className="space-y-4">
                             <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Fact Check</span>
+                                <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Credibility</h3>
                                 <Badge label={verdict.credibility.status} color={getCredColor(verdict.credibility.status)} />
                             </div>
-                            <div className="min-h-[60px]">
-                                <p className="text-sm text-zinc-400 leading-relaxed line-clamp-4">
-                                    {verdict.credibility.explanation}
-                                </p>
+
+                            <div className="relative pt-2">
+                                <div className="flex items-end justify-between mb-2">
+                                    <span className="text-3xl font-bold text-white">{verdict.credibility.confidence}%</span>
+                                    <span className="text-sm text-zinc-400 mb-1">Confidence</span>
+                                </div>
+                                <div className="w-full bg-zinc-900 rounded-full h-1.5 overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full ${getCredColor(verdict.credibility.status).split(' ')[2]}`}
+                                        style={{ width: `${verdict.credibility.confidence}%` }}
+                                    />
+                                </div>
                             </div>
-                            {/* Confidence Bar */}
-                            <div className="w-full bg-zinc-800 rounded-full h-1 mt-2">
-                                <div
-                                    className={`h-1 rounded-full ${getCredColor(verdict.credibility.status).split(' ')[2]}`}
-                                    style={{ width: `${verdict.credibility.confidence}%` }}
-                                />
+
+                            <p className="text-sm text-zinc-300 leading-relaxed">
+                                {verdict.credibility.explanation}
+                            </p>
+                        </div>
+
+                        <div className="h-px bg-zinc-900" />
+
+                        {/* Summary */}
+                        <div className="space-y-3">
+                            <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Executive Summary</h3>
+                            <div className="p-4 bg-zinc-900/50 rounded-lg border border-zinc-800/50">
+                                <p className="text-sm text-zinc-300 leading-relaxed">
+                                    {verdict.summary}
+                                </p>
                             </div>
                         </div>
 
                     </div>
 
                     {/* Footer */}
-                    <div className="px-4 py-2 bg-zinc-900/50 border-t border-zinc-800/50 flex justify-end">
-                        <span className="text-[10px] text-zinc-600">Powered by NymAI</span>
+                    <div className="sticky bottom-0 p-4 bg-zinc-950 border-t border-zinc-800">
+                        <div className="flex items-center justify-between text-xs text-zinc-600">
+                            <span>Powered by NymAI</span>
+                            <span>v0.0.1</span>
+                        </div>
                     </div>
 
                 </div>

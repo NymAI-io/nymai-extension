@@ -185,8 +185,12 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 // 3. Listen for Precision Path messages from content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'precision-path-scan') {
-    const requestedScanType = (request.scanType || request.mode || "credibility") as 'credibility' | 'authenticity'
-    console.log("BACKGROUND: Received Precision Path scan request:", requestedScanType, "Payload type:", request.content?.content_type)
+    // Force "all" or "unified" scan type to get both Authenticity and Credibility
+    // The backend should handle this, or we can pass "credibility" if it returns both by default now.
+    // Based on analysis.py, it returns a UnifiedVerdict regardless of input, but let's be explicit if needed.
+    // For now, we'll pass "credibility" as the primary intent, but the backend returns UnifiedVerdict.
+    const requestedScanType = "credibility"
+    console.log("BACKGROUND: Received Precision Path scan request (Unified):", requestedScanType, "Payload type:", request.content?.content_type)
 
     // We need to know the tab ID to send the result back
     const tabId = sender.tab?.id
