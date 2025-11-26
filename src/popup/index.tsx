@@ -22,7 +22,7 @@ function getStorageArea(): chrome.storage.StorageArea | null {
   if (_storageArea !== null) {
     return _storageArea
   }
-  
+
   try {
     // Check if we're in a Chrome extension context
     if (typeof chrome === 'undefined') {
@@ -30,21 +30,21 @@ function getStorageArea(): chrome.storage.StorageArea | null {
       _storageArea = null
       return null
     }
-    
+
     // Check if chrome.runtime is available (indicates extension context is ready)
     if (!chrome.runtime || !chrome.runtime.id) {
       console.error('NymAI: chrome.runtime is not available - extension not loaded')
       _storageArea = null
       return null
     }
-    
+
     // Check if chrome.storage exists
     if (!chrome.storage) {
       console.error('NymAI: chrome.storage is not available - check manifest permissions')
       _storageArea = null
       return null
     }
-    
+
     // SECURITY FIX: Use session storage only (no local storage fallback)
     // Session storage is cleared when browser closes, reducing token exposure risk
     if (chrome.storage.session) {
@@ -52,7 +52,7 @@ function getStorageArea(): chrome.storage.StorageArea | null {
       console.log('NymAI: Using chrome.storage.session')
       return _storageArea
     }
-    
+
     // Fail gracefully if session storage is not available
     // Do not fall back to local storage for security reasons
     console.error('NymAI: chrome.storage.session is required but not available')
@@ -134,7 +134,7 @@ function IndexPopup() {
     try {
       setError("") // Clear any previous errors
       setErrorCode(null) // Clear any previous error codes (e.g., 402 upgrade prompts)
-      
+
       // Get the current active tab
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       if (!tab.id || !tab.url) {
@@ -188,7 +188,7 @@ function IndexPopup() {
         // Wait a bit longer and try once more
         await new Promise(resolve => setTimeout(resolve, 300))
         messageSent = await sendActivationMessage()
-        
+
         if (!messageSent) {
           setError("Unable to connect to the page. Please reload the page and try again.")
           return
@@ -208,16 +208,16 @@ function IndexPopup() {
     try {
       // Clear badge when cancelling scan
       clearBadge()
-      
+
       // Set cancellation flag immediately to prevent any errors from showing
       setIsCancelled(true)
-      
+
       // Immediately reset UI state for instant feedback
       setIsScanning(false)
       setError("")
       setErrorCode(null)
       setScanResult(null)
-      
+
       // Set cancellation flag and clear storage to prevent error from showing
       const storageAreaInstance = getStorageArea()
       if (storageAreaInstance) {
@@ -231,7 +231,7 @@ function IndexPopup() {
           console.error('NymAI: Error updating storage during cancel:', storageError)
         }
       }
-      
+
       // Send cancel message to background with error handling
       try {
         const response = await chrome.runtime.sendMessage({ action: 'cancel-scan' })
@@ -244,7 +244,7 @@ function IndexPopup() {
         console.error('NymAI: Error sending cancel message:', messageError)
         // Continue anyway - UI is already reset
       }
-      
+
       // Keep cancellation flag for a bit longer to catch any late errors
       setTimeout(async () => {
         setIsCancelled(false)
@@ -282,9 +282,9 @@ function IndexPopup() {
     try {
       // Send message to background script to handle the scan
       chrome.runtime.sendMessage(
-        { 
-          type: 'SCAN_YOUTUBE_URL', 
-          url: currentUrl 
+        {
+          type: 'SCAN_YOUTUBE_URL',
+          url: currentUrl
         },
         (response) => {
           if (chrome.runtime.lastError) {
@@ -319,10 +319,10 @@ function IndexPopup() {
     setError("")
     setErrorCode(null)
     setIsScanning(false)
-    
+
     // Clear badge when returning to main screen
     clearBadge()
-    
+
     // Clear persisted state in chrome.storage.local (if available)
     const storageAreaInstance = getStorageArea()
     if (storageAreaInstance) {
@@ -341,11 +341,11 @@ function IndexPopup() {
     // This prevents the service worker from being suspended during long-running scans
     const port = chrome.runtime.connect({ name: 'popup-keepalive' })
     console.log('NymAI: Popup opened connection to keep service worker alive')
-    
+
     port.onDisconnect.addListener(() => {
       console.log('NymAI: Popup connection closed')
     })
-    
+
     // Cleanup: close connection when popup closes
     return () => {
       port.disconnect()
@@ -358,22 +358,22 @@ function IndexPopup() {
       try {
         // SESSION RE-HYDRATION: Check storage for saved session and restore it
         console.log('NymAI: Checking storage for saved session...')
-        
+
         const storageAreaInstance = getStorageArea()
         if (!storageAreaInstance) {
           console.error('NymAI: Storage area is not available')
           setLoading(false)
           return
         }
-        
+
         const storage = await storageAreaInstance.get("nymAiSession")
-        
+
         if (storage?.nymAiSession) {
           console.log('NymAI: Found saved session in storage, re-hydrating...')
           try {
             // Restore the session in Supabase client
             const { data: sessionData, error: sessionError } = await supabase.auth.setSession(storage.nymAiSession)
-            
+
             if (sessionError) {
               console.error('NymAI: Failed to restore session:', sessionError)
               // If session is invalid, remove it from storage
@@ -580,7 +580,7 @@ function IndexPopup() {
         if (changes.lastScanResult) {
           const newData = changes.lastScanResult.newValue
           setIsScanning(false) // Stop loading indicator when result arrives
-          
+
           // Refresh credits after scan completes (success or error)
           if (userEmail) {
             // Fetch updated credits
@@ -607,7 +607,7 @@ function IndexPopup() {
               })
             }
           }
-          
+
           // If scan was cancelled, ignore any errors
           if (isCancelled) {
             setScanResult(null)
@@ -615,7 +615,7 @@ function IndexPopup() {
             setErrorCode(null)
             return
           }
-          
+
           // Check if scan was cancelled in storage - if so, ignore any errors
           const storageAreaInstance = getStorageArea()
           if (storageAreaInstance) {
@@ -627,7 +627,7 @@ function IndexPopup() {
                 setErrorCode(null)
                 return
               }
-              
+
               if (newData) {
                 if (newData.error) {
                   // Skip error display for cancelled scans (499)
@@ -657,7 +657,8 @@ function IndexPopup() {
                 setError("")
                 setErrorCode(null)
               }
-          })
+            })
+          }
         }
       }
 
@@ -671,7 +672,7 @@ function IndexPopup() {
       }
     } else {
       // No storage available - return empty cleanup function
-      return () => {}
+      return () => { }
     }
   }, []) // Empty dependency array ensures this runs only once on mount
 
@@ -795,9 +796,9 @@ function IndexPopup() {
     // Priority 2: Error states (with special handling for 402 upgrade prompt)
     if (error) {
       // Check if this is an activation error (not a scan error)
-      const isActivationError = error.includes("activate selection mode") || 
-                                 error.includes("not available on this page") ||
-                                 error.includes("reload the page")
+      const isActivationError = error.includes("activate selection mode") ||
+        error.includes("not available on this page") ||
+        error.includes("reload the page")
 
       // Special case: 402 error code shows upgrade prompt with distinct styling
       if (errorCode === 402) {
@@ -891,7 +892,7 @@ function IndexPopup() {
     if (scanResult) {
       const hasAuthenticity = scanResult?.authenticity && typeof scanResult.authenticity.score === 'number'
       const hasCredibility = scanResult?.credibility && typeof scanResult.credibility.risk_score === 'number'
-      
+
       // If neither exists, show a generic message
       if (!hasAuthenticity && !hasCredibility) {
         return (
@@ -951,7 +952,7 @@ function IndexPopup() {
                 </div>
               </div>
             )}
-            
+
             {/* Credibility Section - Only show if data exists */}
             {hasCredibility && (
               <div className={`space-y-3 ${hasAuthenticity ? "border-t border-gray-200 pt-6" : ""}`}>
@@ -969,7 +970,7 @@ function IndexPopup() {
                   <p className="text-sm text-gray-700 leading-relaxed mt-2">
                     {scanResult?.credibility?.analysis || "No analysis provided."}
                   </p>
-                  
+
                   {/* Claims Section */}
                   {scanResult?.credibility?.claims?.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
@@ -977,23 +978,22 @@ function IndexPopup() {
                       {scanResult.credibility.claims.map((claim: any, index: number) => {
                         // Normalize claim status to lowercase string for case-insensitive comparison
                         // Handles both boolean (legacy) and string (new) formats
-                        const status = typeof claim.is_true === 'string' 
-                          ? claim.is_true.toLowerCase() 
+                        const status = typeof claim.is_true === 'string'
+                          ? claim.is_true.toLowerCase()
                           : claim.is_true === true ? 'true' : claim.is_true === false ? 'false' : 'misleading'
-                        
+
                         const isTrue = status === 'true'
                         const isFalse = status === 'false'
                         const isMisleading = status === 'misleading'
-                        
+
                         return (
                           <div key={index} className="bg-white rounded-lg p-3 border-l-4 border-yellow-400 border border-gray-200">
                             <p className="text-sm text-gray-900 font-medium mb-1">{claim.claim}</p>
                             <div className="flex items-start space-x-2">
-                              <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                                isTrue ? "bg-green-100 text-green-700" :
-                                isFalse ? "bg-red-100 text-red-700" :
-                                "bg-yellow-100 text-yellow-700"
-                              }`}>
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded ${isTrue ? "bg-green-100 text-green-700" :
+                                  isFalse ? "bg-red-100 text-red-700" :
+                                    "bg-yellow-100 text-yellow-700"
+                                }`}>
                                 {isTrue ? "TRUE" : isFalse ? "FALSE" : "MISLEADING"}
                               </span>
                               <p className="text-xs text-gray-600 flex-1">{claim.evidence}</p>
@@ -1007,7 +1007,7 @@ function IndexPopup() {
               </div>
             )}
           </div>
-          
+
           {/* Footer with Start New Scan Button */}
           <div className="px-5 py-4 bg-gray-50 border-t border-gray-200">
             <button
@@ -1015,14 +1015,14 @@ function IndexPopup() {
               className="w-full py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition-colors">
               Start New Scan
             </button>
-            
+
             {/* Liability Disclaimer */}
             <div className="py-2 text-center">
               <p className="text-[10px] text-gray-400">
                 <em>NymAI isn't perfect. Please use this as a guide, not the final verdict.</em>
               </p>
             </div>
-            
+
             <div className="mt-3 text-center">
               <a
                 href="https://tally.so/r/GxxgYL"
@@ -1053,7 +1053,7 @@ function IndexPopup() {
             </div>
           </div>
         )}
-        
+
         {/* Always show the standard scan buttons */}
         <div className="p-5 bg-gray-50 rounded-xl border-2 border-gray-200 shadow-md space-y-3">
           <button
@@ -1089,15 +1089,15 @@ function IndexPopup() {
       </div>
     )
   }
-  
+
   return (
     <div className="w-[380px] min-h-[400px] bg-gray-50 font-sans text-gray-900">
       {/* Header with Branding */}
       <div className="bg-white border-b border-gray-200 px-5 py-4">
         <div className="flex items-center justify-center mb-3 pt-2">
-          <img 
-            src={chrome.runtime.getURL('NymAI_full_logo.svg')} 
-            alt="NymAI Logo" 
+          <img
+            src={chrome.runtime.getURL('NymAI_full_logo.svg')}
+            alt="NymAI Logo"
             className="h-10"
             onError={(e) => {
               console.error('Failed to load logo. Attempted URL:', chrome.runtime.getURL('NymAI_full_logo.svg'));
@@ -1109,7 +1109,7 @@ function IndexPopup() {
             }}
           />
         </div>
-        
+
         {/* User authentication section */}
         {!userEmail ? (
           <div className="space-y-2">
@@ -1135,9 +1135,8 @@ function IndexPopup() {
               </div>
               {credits !== null && (
                 <div className="flex items-center justify-center">
-                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                    credits >= 2 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                  }`}>
+                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${credits >= 2 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
                     ⚡ {credits} Credits
                   </span>
                 </div>

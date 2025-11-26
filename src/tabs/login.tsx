@@ -22,11 +22,20 @@ if (chrome.storage.session) {
   console.error('NymAI: chrome.storage.session not available. Session storage is required for security.')
   // Use a no-op storage area that throws errors to prevent accidental use
   storageArea = {
-    get: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
-    set: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
-    remove: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
-    clear: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
-    getBytesInUse: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') }
+    get: (keys?: any) => Promise.reject(new Error('Session storage is required but not available. Please update Chrome.')),
+    set: (items: any) => Promise.reject(new Error('Session storage is required but not available. Please update Chrome.')),
+    remove: (keys?: any) => Promise.reject(new Error('Session storage is required but not available. Please update Chrome.')),
+    clear: () => Promise.reject(new Error('Session storage is required but not available. Please update Chrome.')),
+    getBytesInUse: (keys?: any) => Promise.reject(new Error('Session storage is required but not available. Please update Chrome.')),
+    setAccessLevel: (accessOptions: any) => Promise.reject(new Error('Session storage is required but not available. Please update Chrome.')),
+    onChanged: {
+      addListener: () => { },
+      removeListener: () => { },
+      hasListener: () => false,
+      addRules: () => { },
+      getRules: () => { },
+      removeRules: () => { }
+    } as any
   } as chrome.storage.StorageArea
 }
 
@@ -102,9 +111,9 @@ function Login() {
     <div className="w-full h-screen p-8 bg-white flex justify-center items-start font-sans">
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center space-x-2 mb-8">
-          <img 
-            src={chrome.runtime.getURL('NymAI_full_logo.svg')} 
-            alt="NymAI Logo" 
+          <img
+            src={chrome.runtime.getURL('NymAI_full_logo.svg')}
+            alt="NymAI Logo"
             className="h-12"
             onError={(e) => {
               console.error('Failed to load logo. Attempted URL:', chrome.runtime.getURL('NymAI_full_logo.svg'));

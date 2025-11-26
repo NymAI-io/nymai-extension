@@ -28,11 +28,6 @@
     "prettier": "3.2.4",
     "typescript": "5.3.3"
   },
-  "plasmo": {
-    "entries": {
-      "tabs/login": "src/tabs/login.tsx"
-    }
-  },
   "manifest": {
     "host_permissions": [
       "https://rpnprnyoylifxxstdxzg.supabase.co/*",
@@ -64,7 +59,9 @@
           "assets/NymAI_full_logo.svg",
           "assets/NymAI_icon.svg"
         ],
-        "matches": ["<all_urls>"]
+        "matches": [
+          "<all_urls>"
+        ]
       }
     ]
   }

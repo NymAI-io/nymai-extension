@@ -16,23 +16,34 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 // Session storage is cleared when browser closes, reducing token exposure risk
 // If session storage is not available, we'll check and fail gracefully at runtime
 let storageArea: chrome.storage.StorageArea
+
+// Constants
+const MAX_TEXT_LENGTH = 5000
+const RATE_LIMIT_WINDOW_MS = 5000
+let lastScanTimestamp = 0
+
 if (chrome.storage.session) {
   storageArea = chrome.storage.session
 } else {
-  // This should not happen in Chrome 102+, but fail gracefully if it does
   console.error('NymAI: chrome.storage.session not available. Session storage is required for security.')
   // Use a no-op storage area that throws errors to prevent accidental use
   storageArea = {
-    get: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
-    set: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
-    remove: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
-    clear: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') },
-    getBytesInUse: async () => { throw new Error('Session storage is required but not available. Please update Chrome.') }
+    get: (keys?: any) => Promise.reject(new Error('Session storage is required but not available. Please update Chrome.')),
+    set: (items: any) => Promise.reject(new Error('Session storage is required but not available. Please update Chrome.')),
+    remove: (keys?: any) => Promise.reject(new Error('Session storage is required but not available. Please update Chrome.')),
+    clear: () => Promise.reject(new Error('Session storage is required but not available. Please update Chrome.')),
+    getBytesInUse: (keys?: any) => Promise.reject(new Error('Session storage is required but not available. Please update Chrome.')),
+    setAccessLevel: (accessOptions: any) => Promise.reject(new Error('Session storage is required but not available. Please update Chrome.')),
+    onChanged: {
+      addListener: () => { },
+      removeListener: () => { },
+      hasListener: () => false,
+      addRules: () => { },
+      getRules: () => { },
+      removeRules: () => { }
+    } as any
   } as chrome.storage.StorageArea
 }
-const RATE_LIMIT_WINDOW_MS = 2500
-let lastScanTimestamp = 0
-const MAX_TEXT_LENGTH = 5000
 
 // Store abort controllers for active scans so they can be cancelled
 let currentAbortController: AbortController | null = null
@@ -50,7 +61,7 @@ chrome.runtime.onConnect.addListener((port) => {
   const portName = port.name || 'unknown'
   console.log(`NymAI: Connection opened (${portName}) to keep service worker alive`)
   activeConnections.add(port)
-  
+
   // Send periodic pings to keep the connection active
   // This prevents Chrome from suspending the service worker during long requests
   const pingInterval = setInterval(() => {
@@ -67,9 +78,9 @@ chrome.runtime.onConnect.addListener((port) => {
       keepAliveIntervals.delete(port)
     }
   }, 20000) // Every 20 seconds to reset Chrome's service worker timer
-  
+
   keepAliveIntervals.set(port, pingInterval)
-  
+
   port.onDisconnect.addListener(() => {
     console.log(`NymAI: Connection closed (${portName})`)
     activeConnections.delete(port)
@@ -161,11 +172,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       content_data: info.srcUrl
     });
   } else if (info.menuItemId === "scanVideo" && info.srcUrl) {
-      console.log("BACKGROUND: Detected video click.");
-      runFullScan({
-        content_type: "video",
-        content_data: info.srcUrl
-      });
+    console.log("BACKGROUND: Detected video click.");
+    runFullScan({
+      content_type: "video",
+      content_data: info.srcUrl
+    });
   }
   // Note: We no longer need the other cases (audio, link) for the MVP,
   // and we have intentionally removed the fallback error case.
@@ -176,23 +187,69 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'precision-path-scan') {
     const requestedScanType = (request.scanType || request.mode || "credibility") as 'credibility' | 'authenticity'
     console.log("BACKGROUND: Received Precision Path scan request:", requestedScanType, "Payload type:", request.content?.content_type)
-    // Process scan request directly in background (popup may be closed)
-    // Results will be stored in chrome.storage.session and badge will be updated
-    runFullScan(request.content, requestedScanType).catch((error) => {
-      console.error("BACKGROUND: Error processing scan request:", error)
-    })
-    // Send response immediately (scan runs asynchronously)
+
+    // We need to know the tab ID to send the result back
+    const tabId = sender.tab?.id
+
+    if (!tabId) {
+      console.error("BACKGROUND: No tab ID found for precision path scan")
+      return true
+    }
+
+    // Process scan request directly in background
+    // We wrap this in an async function to handle the promise
+    const handleScan = async () => {
+      try {
+        // Reuse the existing runFullScan logic which handles API calls and storage
+        // But we also need to explicitly send the result back to the content script
+        // because runFullScan broadcasts to the *active* tab, which might be different
+        // (though in this case it's likely the same)
+
+        // We'll modify runFullScan slightly or just call it and let it do its thing,
+        // but runFullScan relies on storage updates to update the popup.
+        // The content script listens for NYMAI_SCAN_COMPLETE.
+
+        // Let's call runFullScan. It already broadcasts NYMAI_SCAN_COMPLETE to the active tab.
+        // If we need to be more specific (e.g. if the user switched tabs), we might need to pass tabId to runFullScan.
+        // For now, let's assume the user stays on the tab.
+
+        await runFullScan(request.content, requestedScanType)
+
+        // runFullScan saves to storage and broadcasts NYMAI_SCAN_COMPLETE.
+        // If runFullScan fails, it sets an error in storage.
+        // We should check storage to see if it succeeded or failed, and send an error if needed.
+
+        const result = await storageArea.get("lastScanResult")
+        if (result.lastScanResult?.error) {
+          chrome.tabs.sendMessage(tabId, {
+            action: "NYMAI_SCAN_ERROR",
+            error: result.lastScanResult.error
+          })
+        }
+
+      } catch (error: any) {
+        console.error("BACKGROUND: Error processing scan request:", error)
+        chrome.tabs.sendMessage(tabId, {
+          action: "NYMAI_SCAN_ERROR",
+          error: error.message || "Scan failed"
+        })
+      }
+    }
+
+    handleScan()
+
+    // Send immediate acknowledgement
     sendResponse({ success: true })
     return true // Indicate we will send response asynchronously
   }
-  
+
   // Handle YouTube URL scan requests from popup
   if (request.type === 'SCAN_YOUTUBE_URL' && request.url) {
     console.log("BACKGROUND: Received YouTube URL scan request:", request.url)
     handleYouTubeUrlScan(request.url)
     sendResponse({ success: true })
   }
-  
+
   // Handle cancel scan requests
   if (request.action === 'cancel-scan') {
     console.log("BACKGROUND: Received cancel scan request")
@@ -204,7 +261,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       console.log("BACKGROUND: Scan cancelled")
       // Reset UI state - clear result instead of setting error
       chrome.action.setBadgeText({ text: '' })
-      storageArea.set({ 
+      storageArea.set({
         isScanning: false
       })
       // Remove lastScanResult to prevent error from showing
@@ -219,7 +276,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     return true
   }
-  
+
   return true // Async response
 })
 
@@ -231,7 +288,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true })
     return true
   }
-  
+
   // Handle extension ID requests from content script
   if (request.type === 'GET_EXTENSION_ID') {
     const extensionId = chrome.runtime.id
@@ -239,7 +296,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ extensionId })
     return true
   }
-  
+
   return false
 })
 
@@ -251,7 +308,7 @@ chrome.runtime.onMessageExternal.addListener(
     console.log('NymAI: Message type:', message?.type)
     console.log('NymAI: Full message object:', message)
     console.log('NymAI: Sender tab ID:', sender.tab?.id)
-    
+
     // Verify the sender is from our trusted domain
     if (!sender.url || (!sender.url.startsWith('https://www.nymai.io') && !sender.url.startsWith('https://nymai.io') && !sender.url.startsWith('http://localhost'))) {
       console.warn('NymAI: Rejected message from untrusted source:', sender.url)
@@ -271,13 +328,13 @@ chrome.runtime.onMessageExternal.addListener(
       console.log('NymAI: Session object received:', message.session)
       console.log('NymAI: Session access_token present:', !!message.session?.access_token)
       console.log('NymAI: Session refresh_token present:', !!message.session?.refresh_token)
-      
+
       try {
         console.log('NymAI: Attempting to set session in Supabase...')
-        
+
         // Set the session in Supabase client
         const { data, error } = await supabase.auth.setSession(message.session)
-        
+
         if (error) {
           console.error('NymAI: Failed to set session:', error)
           console.error('NymAI: Error code:', error.status)
@@ -292,11 +349,11 @@ chrome.runtime.onMessageExternal.addListener(
         // Save session to storage (same as popup does)
         console.log('NymAI: Saving session to storage...')
         await storageArea.set({ nymAiSession: message.session })
-        
+
         console.log('NymAI: Session saved successfully from landing page')
         console.log('NymAI: Current loginTabId:', loginTabId)
         console.log('NymAI: Sender tab ID:', sender.tab?.id)
-        
+
         // Broadcast login completion to any open popups so they can refresh their UI
         console.log('NymAI: Broadcasting NYMAI_LOGIN_COMPLETE to popups...')
         chrome.runtime.sendMessage({ type: 'NYMAI_LOGIN_COMPLETE' }, (response) => {
@@ -306,11 +363,11 @@ chrome.runtime.onMessageExternal.addListener(
             console.log('NymAI: Login complete message broadcasted successfully')
           }
         })
-        
+
         // Close the login tab immediately and reliably
         // Use tracked loginTabId if available, otherwise fall back to sender tab ID
         const tabIdToClose = loginTabId !== null ? loginTabId : sender.tab?.id
-        
+
         if (tabIdToClose) {
           console.log('NymAI: Closing tab with ID:', tabIdToClose)
           chrome.tabs.remove(tabIdToClose, (error) => {
@@ -324,7 +381,7 @@ chrome.runtime.onMessageExternal.addListener(
         } else {
           console.warn('NymAI: No tab ID available to close. loginTabId:', loginTabId, 'sender.tab.id:', sender.tab?.id)
         }
-        
+
         console.log('NymAI: Sending success response to landing page')
         sendResponse({ success: true })
         return true
@@ -337,7 +394,7 @@ chrome.runtime.onMessageExternal.addListener(
         return false
       }
     }
-    
+
     // Log if message type doesn't match
     if (message.type !== 'PING' && message.type !== 'NYMAI_AUTH_SUCCESS') {
       console.warn('NymAI: Unknown message type received:', message.type)
@@ -395,9 +452,9 @@ async function runFullScan(
     console.error("NymAI Error: No user session found. Please log in.")
     // Clear badge and scanning state before returning
     chrome.action.setBadgeText({ text: '' })
-    await storageArea.set({ 
+    await storageArea.set({
       lastScanResult: { error: "You must be logged in to scan." },
-      isScanning: false 
+      isScanning: false
     })
     return // Stop the scan
   }
@@ -412,34 +469,25 @@ async function runFullScan(
   const endpointUrl = `${NYMAI_API_BASE_URL}${endpointPath}`
 
   // Keep service worker alive by writing to storage periodically
-  // MV3 service workers can be suspended after ~5 seconds of inactivity
-  // Writing to storage every 2 seconds prevents suspension during long requests
-  // More frequent writes ensure the service worker stays active even during Render cold starts
-  // Note: We don't create a self-connecting port here because that causes "Receiving end does not exist" errors
-  // Storage writes are sufficient to keep the service worker alive
   const keepAliveInterval = setInterval(async () => {
     try {
-      // Write to storage to prevent service worker suspension
       await storageArea.set({ _keepAlive: Date.now() })
-      // Also trigger a small async operation to keep the event loop active
       await new Promise(resolve => setTimeout(resolve, 0))
       console.log('NymAI: Keep-alive storage ping sent')
     } catch (e) {
       console.warn('NymAI: Failed to keep service worker alive via storage:', e)
     }
-  }, 2000) // Every 2 seconds (more frequent to prevent suspension)
+  }, 2000)
 
   try {
     const controller = new AbortController()
-    currentAbortController = controller // Store globally so it can be cancelled
-    // Increased timeout to 120 seconds to allow for Render cold starts (can take 30-60s)
+    currentAbortController = controller
+
     const timeout = setTimeout(() => {
       console.warn('NymAI: Request timeout after 120 seconds, aborting')
       controller.abort()
     }, 120000)
-    
-    // Start the fetch request
-    // The fetch itself should keep the service worker alive, but we also have storage keep-alive as backup
+
     console.log('NymAI: Starting fetch request to', endpointUrl)
     const response = await fetch(endpointUrl, {
       method: "POST",
@@ -449,11 +497,10 @@ async function runFullScan(
       },
       body: JSON.stringify(sanitizedPayload),
       signal: controller.signal,
-      // Keep the connection alive - this helps prevent service worker suspension
       keepalive: true
     })
     clearTimeout(timeout)
-    currentAbortController = null // Clear after successful fetch
+    currentAbortController = null
 
     const rawBody = await response.text()
     const contentType = response.headers.get("content-type") ?? ""
@@ -468,60 +515,62 @@ async function runFullScan(
         )
       }
     } else {
-      // Surface the first part of the response body to help debugging (Render returns HTML error pages)
       const snippet = rawBody ? rawBody.slice(0, 200) : "(empty response)"
       throw new Error(
         `Backend returned non-JSON response (status ${response.status}): ${snippet}`
       )
     }
-    
-    // --- Handle credit limit errors (429 = Too Many Requests / Daily limit reached) ---
+
     if (response.status === 429 || response.status === 402) {
-        // Backend returns 429 for daily credit limit, but we also handle 402 for compatibility
-        // We save *only* the error detail, not the generic "fetch failed"
-        storageArea.set({ 
-            lastScanResult: { error: data.detail, error_code: response.status } 
-        });
-        // Badge will be cleared in finally block
-        return; // Stop here
+      await storageArea.set({
+        lastScanResult: { error: data.detail, error_code: response.status }
+      });
+      return;
     }
 
     if (response.status !== 200) {
       throw new Error(data?.detail || "Backend error")
     }
-    // 6. Success! Save the result to local storage
+
     await storageArea.set({ lastScanResult: data })
     console.log("NymAI Scan Complete. Result saved.")
-    // Set badge to indicate scan is complete (user should open popup to see results)
+
+    // Broadcast result to active tab
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (activeTab?.id) {
+        chrome.tabs.sendMessage(activeTab.id, {
+          action: "NYMAI_SCAN_COMPLETE",
+          data: data
+        }).catch(err => console.log("NymAI: Could not send message to tab (content script might not be loaded):", err))
+      }
+    } catch (err) {
+      console.warn("NymAI: Error broadcasting to tab:", err)
+    }
+
     chrome.action.setBadgeText({ text: '✓' })
-    chrome.action.setBadgeBackgroundColor({ color: '#10b981' }) // Green color for success
-  } catch (e) {
+    chrome.action.setBadgeBackgroundColor({ color: '#10b981' })
+  } catch (e: any) {
     console.error("NymAI Scan Failed:", e)
-    // Check if this was a user cancellation
     const cancellationCheck = await storageArea.get("scanCancelled")
     if (cancellationCheck.scanCancelled || (e instanceof DOMException && e.name === "AbortError" && currentAbortController?.signal.aborted)) {
-      // Check if it was aborted by user (not timeout) - timeout would have been cleared
       console.log("NymAI: Scan cancelled by user")
-      // Don't set error - cancellation is handled in the cancel handler
       currentAbortController = null
-      return // Exit early, state already reset by cancel handler
+      return
     }
-    // Determine the error type
+
     let errorMessage = "Scan failed due to an unexpected error. Please try again."
     let errorCode = 500
-    
+
     if (e instanceof DOMException && e.name === "AbortError") {
-      // Check if it was a timeout or service worker suspension
       if (currentAbortController?.signal.aborted) {
         errorMessage = "The request timed out. Please try again."
         errorCode = 408
       } else {
-        // Likely service worker suspension
         errorMessage = "The connection was interrupted. This may happen during long scans. Please try again."
         errorCode = 499
       }
     } else if (e instanceof Error) {
-      // Check for network errors that indicate disconnection
       if (e.message.includes("Failed to fetch") || e.message.includes("NetworkError") || e.message.includes("Client disconnected")) {
         errorMessage = "The connection was interrupted. This may happen during long scans. Please try again."
         errorCode = 499
@@ -529,32 +578,21 @@ async function runFullScan(
         errorMessage = e.message
       }
     }
-    
-    // Save the error to storage so the popup can see it
+
     await storageArea.set({ lastScanResult: { error: errorMessage, error_code: errorCode } })
   } finally {
-    // Clear keep-alive interval
     clearInterval(keepAliveInterval)
-    // Clear scanning state (but keep badge if scan was successful - it will show ✓)
-    currentAbortController = null // Ensure it's cleared
-    // Only clear badge on error/cancellation (success badge is set above)
+    currentAbortController = null
     const lastResult = await storageArea.get("lastScanResult")
     if (lastResult.lastScanResult?.error) {
-      // Error occurred - clear badge
       chrome.action.setBadgeText({ text: '' })
     }
-    // If no error, badge will remain showing ✓ to indicate completion
     await storageArea.set({ isScanning: false })
   }
 }
 
 // Handle YouTube URL scans initiated from the popup
 async function handleYouTubeUrlScan(url: string) {
-  // Keep service worker alive by writing to storage periodically
-  // MV3 service workers can be suspended after ~5 seconds of inactivity
-  // Writing to storage every 3 seconds prevents suspension during long requests
-  // Note: We don't create a self-connecting port here because that causes "Receiving end does not exist" errors
-  // The popup's connection (if open) and storage writes are sufficient to keep the service worker alive
   const keepAliveInterval = setInterval(async () => {
     try {
       await storageArea.set({ _keepAlive: Date.now() })
@@ -562,8 +600,8 @@ async function handleYouTubeUrlScan(url: string) {
     } catch (e) {
       console.warn('NymAI: Failed to keep service worker alive via storage:', e)
     }
-  }, 3000) // Every 3 seconds (before 5s suspension threshold)
-  
+  }, 3000)
+
   try {
     const now = Date.now()
     if (now - lastScanTimestamp < RATE_LIMIT_WINDOW_MS) {
@@ -574,14 +612,12 @@ async function handleYouTubeUrlScan(url: string) {
       return
     }
 
-    // Set badge and scanning state early to provide immediate feedback
     chrome.action.setBadgeText({ text: '...' })
     chrome.action.setBadgeBackgroundColor({ color: '#4fd1c5' })
     await storageArea.set({ isScanning: true })
 
     lastScanTimestamp = now
 
-    // Validate URL
     if (!url || !url.includes('youtube.com/watch')) {
       clearInterval(keepAliveInterval)
       chrome.action.setBadgeText({ text: '' })
@@ -592,7 +628,6 @@ async function handleYouTubeUrlScan(url: string) {
       return
     }
 
-    // Sanitize the URL
     const sanitizedUrl = sanitizeUrl(url)
     if (!sanitizedUrl) {
       clearInterval(keepAliveInterval)
@@ -604,32 +639,28 @@ async function handleYouTubeUrlScan(url: string) {
       return
     }
 
-    // Get the session from storage
     const storageData = await storageArea.get("nymAiSession")
     const session = storageData.nymAiSession
     if (!session || !session.access_token) {
       clearInterval(keepAliveInterval)
       console.error("NymAI Error: No user session found. Please log in.")
       chrome.action.setBadgeText({ text: '' })
-      await storageArea.set({ 
+      await storageArea.set({
         lastScanResult: { error: "You must be logged in to scan.", error_code: 401 },
-        isScanning: false 
+        isScanning: false
       })
       return
     }
     const realToken = session.access_token
 
-    // Perform the actual scan
     const controller = new AbortController()
-    currentAbortController = controller // Store globally so it can be cancelled
-    // Increased timeout to 120 seconds to allow for Render cold starts (can take 30-60s)
+    currentAbortController = controller
+
     const timeout = setTimeout(() => {
       console.warn('NymAI: YouTube scan timeout after 120 seconds, aborting')
       controller.abort()
     }, 120000)
-    
-    // Start the fetch request
-    // The fetch itself should keep the service worker alive, but we also have storage keep-alive as backup
+
     console.log('NymAI: Starting YouTube scan fetch request')
     const response = await fetch(`${NYMAI_API_BASE_URL}/v1/scan/credibility`, {
       method: "POST",
@@ -642,11 +673,10 @@ async function handleYouTubeUrlScan(url: string) {
         content_data: sanitizedUrl
       }),
       signal: controller.signal,
-      // Keep the connection alive
       keepalive: true
     })
     clearTimeout(timeout)
-    currentAbortController = null // Clear after successful fetch
+    currentAbortController = null
 
     const rawBody = await response.text()
     const contentType = response.headers.get("content-type") ?? ""
@@ -666,51 +696,46 @@ async function handleYouTubeUrlScan(url: string) {
         `Backend returned non-JSON response (status ${response.status}): ${snippet}`
       )
     }
-    
-    // Handle credit limit errors (429 = Too Many Requests / Daily limit reached)
+
     if (response.status === 429 || response.status === 402) {
-      // Backend returns 429 for daily credit limit, but we also handle 402 for compatibility
-      await storageArea.set({ 
-        lastScanResult: { error: data.detail || "Daily analysis limit reached. You have used all 10 free analyses for today.", error_code: response.status } 
+      await storageArea.set({
+        lastScanResult: { error: data.detail || "Daily analysis limit reached. You have used all 10 free analyses for today.", error_code: response.status }
       })
-      return // Badge will be cleared in finally block
+      return
     }
 
     if (response.status !== 200) {
       throw new Error(data?.detail || `Request failed with status ${response.status}`)
     }
-    
-    // Success! Save the result to storage
+
     await storageArea.set({ lastScanResult: data })
     console.log("NymAI YouTube Scan Complete. Result saved.")
-  } catch (e) {
+
+    chrome.action.setBadgeText({ text: '✓' })
+    chrome.action.setBadgeBackgroundColor({ color: '#10b981' })
+
+  } catch (e: any) {
     console.error("NymAI YouTube Scan Failed:", e)
-    
-    // Check if this was a user cancellation
+
     const cancellationCheck = await storageArea.get("scanCancelled")
     if (cancellationCheck.scanCancelled || (e instanceof DOMException && e.name === "AbortError" && currentAbortController?.signal.aborted)) {
       console.log("NymAI: YouTube scan cancelled by user")
-      // Don't set error - cancellation is handled in the cancel handler
       currentAbortController = null
-      return // Exit early, state already reset by cancel handler
+      return
     }
-    
-    // Determine the error type
+
     let errorMessage = "Scan failed due to an unexpected error. Please try again."
     let errorCode = 500
-    
+
     if (e instanceof DOMException && e.name === "AbortError") {
-      // Check if it was a timeout or service worker suspension
       if (currentAbortController?.signal.aborted) {
         errorMessage = "The request timed out. Please try again."
         errorCode = 408
       } else {
-        // Likely service worker suspension
         errorMessage = "The connection was interrupted. This may happen during long scans. Please try again."
         errorCode = 499
       }
     } else if (e instanceof Error) {
-      // Check for network errors that indicate disconnection
       if (e.message.includes("Failed to fetch") || e.message.includes("NetworkError") || e.message.includes("Client disconnected")) {
         errorMessage = "The connection was interrupted. This may happen during long scans. Please try again."
         errorCode = 499
@@ -718,21 +743,15 @@ async function handleYouTubeUrlScan(url: string) {
         errorMessage = e.message
       }
     }
-    
-    // Save the error to storage so the popup can see it
+
     await storageArea.set({ lastScanResult: { error: errorMessage, error_code: errorCode } })
   } finally {
-    // Clear keep-alive interval
     clearInterval(keepAliveInterval)
-    // Clear scanning state (but keep badge if scan was successful - it will show ✓)
-    currentAbortController = null // Ensure it's cleared
-    // Only clear badge on error/cancellation (success badge is set above)
+    currentAbortController = null
     const lastResult = await storageArea.get("lastScanResult")
     if (lastResult.lastScanResult?.error) {
-      // Error occurred - clear badge
       chrome.action.setBadgeText({ text: '' })
     }
-    // If no error, badge will remain showing ✓ to indicate completion
     await storageArea.set({ isScanning: false })
   }
 }
